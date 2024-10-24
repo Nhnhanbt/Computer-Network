@@ -2,6 +2,7 @@ import socket
 import threading
 import mysql.connector as mysql
 import json
+import os
 
 TRACKER_PORT = 50000
 TRACKER_ADDRESS = "127.0.0.1" #Random IP  :vvv
@@ -11,6 +12,12 @@ cursor=con.cursor()
 # cursor.execute("Some query"")
 
 living_conn = []
+
+def view_peers():
+    print("view_peers")
+
+def ping():
+    print("ping")
 
 def client_handler(conn, addr):
     login(conn, addr)
@@ -47,8 +54,9 @@ def client_handler(conn, addr):
                 result = cursor.fetchall()
                 if result:
                     metainfo = []
-                    for IP, port, hostname, file_name, file_size, piece_hash, piece_size, piece_order in result:
+                    for ID, IP, port, hostname, file_name, file_size, piece_hash, piece_size, piece_order in result:
                         tmp = {
+                            'ID': ID,
                             'IP': IP,
                             'port': port,
                             'hostname': hostname,
@@ -97,8 +105,19 @@ def login(conn, addr):
         # erase info of this conn in table peers before close connection
         print("[LOGIN] Function login run ok")
 
+def terminal():
+    option = input()
+    while option != "close":
+        if option == "ping":
+            ping()
+        elif option == "view_peers":
+            view_peers()
+        option = input()
+    os._exit(0)
+
 def server_main():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # IPv4 and TCP/IP
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # Config: can reuse IP immediately after closed
     server_socket.bind((TRACKER_ADDRESS, TRACKER_PORT))
     server_socket.listen()
     print(f"[LISTENING] Server is listening on PORT = {TRACKER_PORT}")
@@ -122,5 +141,8 @@ def server_main():
 
 if __name__ == "__main__":
     server_thread = threading.Thread(target=server_main)
+    terminal_thread = threading.Thread(target=terminal)
+    terminal_thread.start()
     server_thread.start()
+    terminal_thread.join()
     server_thread.join()

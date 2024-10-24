@@ -8,6 +8,7 @@ CREATE TABLE login (
 );
 
 CREATE TABLE peers (
+    ID INT AUTO_INCREMENT PRIMARY KEY,
     IP VARCHAR(255),
     port VARCHAR(255),
     hostname VARCHAR(255),
@@ -16,7 +17,6 @@ CREATE TABLE peers (
     piece_hash VARCHAR(255),
     piece_size VARCHAR(255),
     piece_order VARCHAR(255),
-    PRIMARY KEY (IP, port),
     FOREIGN KEY (hostname) REFERENCES login(email)
 );
 
