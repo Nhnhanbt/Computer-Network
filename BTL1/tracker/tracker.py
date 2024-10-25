@@ -3,15 +3,17 @@ import threading
 import mysql.connector as mysql
 import json
 import os
+import random
 
 TRACKER_PORT = 50000
 TRACKER_ADDRESS = "127.0.0.1" #Random IP  :vvv
 
-con = mysql.connect(host="localhost", user="root", password="", database="computer_network")
+con = mysql.connect(host="localhost", user="root", password="Vnpt@123", database="computer_network")
 cursor=con.cursor()
 # cursor.execute("Some query"")
 
 living_conn = []
+public_key, private_key = None, None
 
 def view_peers():
     print("view_peers")
@@ -20,6 +22,9 @@ def ping():
     print("ping")
 
 def client_handler(conn, addr):
+    global public_key
+    conn.sendall(json.dumps({"public_key": public_key}).encode())
+    print(f"[INFO] Sent public key to client at {addr}")
     login(conn, addr)
     while True:
         req = conn.recv(4096).decode()
@@ -39,6 +44,8 @@ def client_handler(conn, addr):
         piece_order = request['piece_order'] if 'piece_order' in request else ""
 
         match req_option:
+            case "signup":
+                signup(conn, request)
             case "download":
                 num_order_in_file_str = ','.join(map(str, piece_order))
                 piece_hash_str = ','.join(map(str, piece_hash))
@@ -105,6 +112,95 @@ def login(conn, addr):
         # erase info of this conn in table peers before close connection
         print("[LOGIN] Function login run ok")
 
+def is_prime(num):
+    if num < 2:
+        return False
+    for i in range(2, int(num ** 0.5) + 1):
+        if num % i == 0:
+            return False
+    return True
+
+def generate_large_prime(min_val=50):
+    prime = random.randint(min_val, min_val * 2)
+    while not is_prime(prime):
+        prime = random.randint(min_val, min_val * 2)
+    return prime
+     
+# Modulo inverse
+def mod_inverse(e, phi):
+    d, x1, x2, y1 = 0, 0, 1, 1
+    temp_phi = phi
+    while e > 0:
+        temp1, temp2 = temp_phi // e, temp_phi - temp_phi // e * e
+        temp_phi, e = e, temp2
+        x, y = x2 - temp1 * x1, d - temp1 * y1
+        x2, x1, d, y1 = x1, x, y1, y
+    if temp_phi == 1:
+        return d + phi
+    return None
+
+# create RSA key
+def generate_keypair():
+    p = generate_large_prime()
+    q = generate_large_prime()  
+    while q == p:               
+        q = generate_large_prime()
+    n = p * q
+    phi = (p - 1) * (q - 1)
+    e = random.randrange(2, phi)
+    while mod_inverse(e, phi) is None:
+        e = random.randrange(2, phi)
+    d = mod_inverse(e, phi)
+    return ((e, n), (d, n))
+
+# Encode
+def encodeRsa(data):
+    _code = data['code']
+    public_key = data['key']
+    e, n = public_key
+    _encode = [pow(ord(char), e, n) for char in _code]
+    return _encode
+
+# Decode
+def decodeRsa(data):
+    _encode = data['code']
+    private_key = data['key']
+    d, n = private_key
+    _decode = ''.join(chr(pow(char, d, n)) for char in _encode)
+    return _decode
+
+def signup(conn, request):
+    try:
+        email_data = {
+            'code': request['email'],
+            'key': private_key
+        }
+        password_data = {
+            'code': request['password'],
+            'key': private_key
+        }
+        email = decodeRsa(email_data)
+        password = decodeRsa(password_data)
+
+        # Kiểm tra xem email đã tồn tại trong database chưa
+        cursor.execute("SELECT * FROM login WHERE email = %s;", (email,))
+        existing_user = cursor.fetchone()
+
+        if existing_user:
+            conn.sendall(json.dumps({'status': False, 'message': 'Email already exists'}).encode())
+        else:
+            # Thêm người dùng mới vào database
+            cursor.execute("INSERT INTO login (email, password) VALUES (%s, %s);",
+                           (email, password))
+            con.commit()
+            conn.sendall(json.dumps({'status': True}).encode())
+            print(f"[SIGNUP] New user created: {email}")
+    except Exception as error:
+        print("[ERROR] Function signup error:", error)
+        conn.sendall(json.dumps({'status': False, 'message': 'Signup failed'}).encode())
+    finally:
+        print("[TEST] Function signup run ok")
+
 def terminal():
     option = input()
     while option != "close":
@@ -116,6 +212,10 @@ def terminal():
     os._exit(0)
 
 def server_main():
+    global public_key, private_key
+    public_key, private_key = generate_keypair()
+    print("[INFO] Public Key:", public_key)
+    print("[INFO] Private Key:", private_key)
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # IPv4 and TCP/IP
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # Config: can reuse IP immediately after closed
     server_socket.bind((TRACKER_ADDRESS, TRACKER_PORT))
