@@ -1,6 +1,7 @@
 import socket
 import threading
-import json
+import json, os
+import random
 from collections import defaultdict
 
 TRACKER_PORT = 50000
@@ -12,6 +13,7 @@ LOCAL_SERVER_ADDRESS = "127.0.0.1"
 LOCAL_SERVER_PORT = 61001
 
 online = True
+public_key_server = None
 
 # Function to select the best destination based on piece_order and priority
 def select_destination_by_order(destinations):
@@ -168,6 +170,16 @@ def server_main():
 def connect_to_tracker(email = "email", password = "password"):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((TRACKER_ADDRESS, TRACKER_PORT))
+    global public_key_server
+    server_response = sock.recv(4096).decode()
+    server_data = json.loads(server_response)
+    public_key_server = server_data.get("public_key", None)
+    if public_key_server:
+        print("[INFO] Received server's public key:", public_key_server)
+    else:
+        print("[ERROR] Failed to retrieve public key from server.")
+        return None
+    
     sock.sendall(json.dumps({'email': email, 'password': password}).encode() + b'\n')
     
     result = sock.recv(4096).decode()
@@ -180,6 +192,112 @@ def connect_to_tracker(email = "email", password = "password"):
     else :
         print("[TEST] Function connect_to_tracker run ok2")
         return None
+    
+def signup(tracker_conn):
+    try:
+        email = input("Enter your email: ")
+        password = input("Enter your password: ")
+        email_data = {
+            'code': email,
+            'key': public_key_server
+        }
+        password_data = {
+            'code': password,
+            'key': public_key_server
+        }
+        signup_data = {
+            'option': 'signup',
+            'email': encodeRsa(email_data),
+            'password': encodeRsa(password_data)
+        }
+        tracker_conn.sendall(json.dumps(signup_data).encode() + b'\n')
+        response = tracker_conn.recv(4096).decode()
+        result = json.loads(response)
+        if result['status']:
+            print("Signup successful! Please log in.")
+        else:
+            print("Signup failed: ", result['message'])
+    except Exception as error:
+        print("[ERROR] Function signup error:", error)
+    finally:
+        print("[TEST] Function signup run ok")
+
+def is_prime(num):
+    if num < 2:
+        return False
+    for i in range(2, int(num ** 0.5) + 1):
+        if num % i == 0:
+            return False
+    return True
+
+def generate_large_prime(min_val=50):
+    prime = random.randint(min_val, min_val * 2)
+    while not is_prime(prime):
+        prime = random.randint(min_val, min_val * 2)
+    return prime
+     
+# Modulo inverse
+def mod_inverse(e, phi):
+    d, x1, x2, y1 = 0, 0, 1, 1
+    temp_phi = phi
+    while e > 0:
+        temp1, temp2 = temp_phi // e, temp_phi - temp_phi // e * e
+        temp_phi, e = e, temp2
+        x, y = x2 - temp1 * x1, d - temp1 * y1
+        x2, x1, d, y1 = x1, x, y1, y
+    if temp_phi == 1:
+        return d + phi
+    return None
+
+# create RSA key
+def generate_keypair():
+    p = generate_large_prime()
+    q = generate_large_prime()  
+    while q == p:               
+        q = generate_large_prime()
+    n = p * q
+    phi = (p - 1) * (q - 1)
+    e = random.randrange(2, phi)
+    while mod_inverse(e, phi) is None:
+        e = random.randrange(2, phi)
+    d = mod_inverse(e, phi)
+    return ((e, n), (d, n))
+
+# Encode
+def encodeRsa(data):
+    _code = data['code']
+    public_key = data['key']
+    e, n = public_key
+    _encode = [pow(ord(char), e, n) for char in _code]
+    return _encode
+
+# Decode
+def decodeRsa(data):
+    _encode = data['code']
+    private_key = data['key']
+    d, n = private_key
+    _decode = ''.join(chr(pow(char, d, n)) for char in _encode)
+    return _decode
+
+
+def logout(tracker_conn):
+    try:
+        tracker_conn.sendall(json.dumps({'option': 'logout_request'}).encode())
+        
+        response = tracker_conn.recv(4096).decode()
+        response_data = json.loads(response)
+        
+        if response_data['status'] == 'logout_accepted':
+            tracker_conn.sendall(json.dumps({'option': 'logout_confirm'}).encode())
+            print("[LOGOUT] Successfully logged out.")
+        else:
+            print("[LOGOUT] Tracker did not accept logout request.")
+            
+    except Exception as e:
+        print("[ERROR] Logout error:", e)
+    finally:
+        tracker_conn.close()
+        print("[DISCONNECTED] Client connection closed.")
 
 if __name__ == "__main__":
     # login first
@@ -191,6 +309,8 @@ if __name__ == "__main__":
         server_thread.start()
         while online:
             command = input()
+            if(command == "signup"):
+                signup(tracker_conn)
             if(command == "download"):
                 file_name = input()
                 download(tracker_conn, file_name)
@@ -198,10 +318,13 @@ if __name__ == "__main__":
                 ping()
             elif(command == "publish"):
                 publish()
+            elif command == "logout":
+                logout(tracker_conn)
             elif(command == "exit"):
                 # Remember to close all the conn and join all thread
                 # Just in case
                 online = False
+                os._exit(0)
         server_thread.join()
     else:
         print("Login again")
