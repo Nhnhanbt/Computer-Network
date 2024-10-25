@@ -1,6 +1,6 @@
 import socket
 import threading
-import json
+import json, os
 from collections import defaultdict
 
 TRACKER_PORT = 50000
@@ -181,6 +181,26 @@ def connect_to_tracker(email = "email", password = "password"):
         print("[TEST] Function connect_to_tracker run ok2")
         return None
 
+
+def logout(tracker_conn):
+    try:
+        tracker_conn.sendall(json.dumps({'option': 'logout_request'}).encode())
+        
+        response = tracker_conn.recv(4096).decode()
+        response_data = json.loads(response)
+        
+        if response_data['status'] == 'logout_accepted':
+            tracker_conn.sendall(json.dumps({'option': 'logout_confirm'}).encode())
+            print("[LOGOUT] Successfully logged out.")
+        else:
+            print("[LOGOUT] Tracker did not accept logout request.")
+            
+    except Exception as e:
+        print("[ERROR] Logout error:", e)
+    finally:
+        tracker_conn.close()
+        print("[DISCONNECTED] Client connection closed.")
+
 if __name__ == "__main__":
     # login first
     email = "myemail"
@@ -198,10 +218,13 @@ if __name__ == "__main__":
                 ping()
             elif(command == "publish"):
                 publish()
+            elif command == "logout":
+                logout(tracker_conn)
             elif(command == "exit"):
                 # Remember to close all the conn and join all thread
                 # Just in case
                 online = False
+                os._exit(0)
         server_thread.join()
     else:
         print("Login again")
