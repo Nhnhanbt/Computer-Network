@@ -8,7 +8,7 @@ import random
 TRACKER_PORT = 50000
 TRACKER_ADDRESS = "127.0.0.1" #Random IP  :vvv
 
-con = mysql.connect(host="localhost", user="root", password="Vnpt@123", database="computer_network")
+con = mysql.connect(host="localhost", user="root", password="", database="computer_network")
 cursor=con.cursor()
 # cursor.execute("Some query"")
 
@@ -81,6 +81,15 @@ def client_handler(conn, addr):
                 print("Case publish\n")
             case "close":
                 print("Case close\n")
+            case "logout_request":
+                conn.sendall(json.dumps({'status': 'logout_accepted'}).encode())
+            case "logout_confirm":
+                if conn in living_conn:
+                    living_conn.remove(conn)
+                    print(f"[LOGOUT] {addr} has logged out.")
+                    print("[CONNECTION] Living connection: ", len(living_conn))
+                conn.close()
+                break
             
 def login(conn, addr):
     try:
