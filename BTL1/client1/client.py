@@ -14,6 +14,7 @@ LOCAL_SERVER_PORT = 61001
 
 online = True
 public_key_server = None
+public_key, private_key = None, None
 
 # Function to select the best destination based on piece_order and priority
 def select_destination_by_order(destinations):
@@ -169,58 +170,27 @@ def server_main():
 
 def connect_to_tracker(email = "email", password = "password"):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect((TRACKER_ADDRESS, TRACKER_PORT))
-    global public_key_server
+    sock.connect((TRACKER_ADDRESS, TRACKER_PORT))   
+    sock.sendall(json.dumps({'email': email, 'password': password}).encode() + b'\n')
+    # receive server public key
     server_response = sock.recv(4096).decode()
     server_data = json.loads(server_response)
     public_key_server = server_data.get("public_key", None)
-    if public_key_server:
-        print("[INFO] Received server's public key:", public_key_server)
-    else:
-        print("[ERROR] Failed to retrieve public key from server.")
-        return None
-    
-    sock.sendall(json.dumps({'email': email, 'password': password}).encode() + b'\n')
-    
+    # receive login status
     result = sock.recv(4096).decode()
     result = json.loads(result)
     status = result['status']
-
     if status:
         print("[TEST] Function connect_to_tracker run ok1")
+        if public_key_server:
+            print("[INFO] Received server's public key:", public_key_server)
+        else:
+            print("[ERROR] Failed to retrieve public key from server.")
+            return None
         return sock
     else :
         print("[TEST] Function connect_to_tracker run ok2")
         return None
-    
-def signup(tracker_conn):
-    try:
-        email = input("Enter your email: ")
-        password = input("Enter your password: ")
-        email_data = {
-            'code': email,
-            'key': public_key_server
-        }
-        password_data = {
-            'code': password,
-            'key': public_key_server
-        }
-        signup_data = {
-            'option': 'signup',
-            'email': encodeRsa(email_data),
-            'password': encodeRsa(password_data)
-        }
-        tracker_conn.sendall(json.dumps(signup_data).encode() + b'\n')
-        response = tracker_conn.recv(4096).decode()
-        result = json.loads(response)
-        if result['status']:
-            print("Signup successful! Please log in.")
-        else:
-            print("Signup failed: ", result['message'])
-    except Exception as error:
-        print("[ERROR] Function signup error:", error)
-    finally:
-        print("[TEST] Function signup run ok")
 
 def is_prime(num):
     if num < 2:
@@ -264,21 +234,17 @@ def generate_keypair():
     return ((e, n), (d, n))
 
 # Encode
-def encodeRsa(data):
-    _code = data['code']
-    public_key = data['key']
-    e, n = public_key
+def encodeRsa(data, key):
+    _code = json.dumps(data)
+    e, n = key
     _encode = [pow(ord(char), e, n) for char in _code]
     return _encode
 
 # Decode
-def decodeRsa(data):
-    _encode = data['code']
-    private_key = data['key']
+def decodeRsa(_encode):
     d, n = private_key
     _decode = ''.join(chr(pow(char, d, n)) for char in _encode)
-    return _decode
-
+    return json.loads(_decode)
 
 def logout(tracker_conn):
     try:
@@ -301,16 +267,14 @@ def logout(tracker_conn):
 
 if __name__ == "__main__":
     # login first
-    email = "myemail"
-    password = "mypassword"
+    email = "fffhfh"
+    password = "dhffb"
     tracker_conn = connect_to_tracker(email, password)
     if tracker_conn:
         server_thread = threading.Thread(target=server_main)
         server_thread.start()
         while online:
             command = input()
-            if(command == "signup"):
-                signup(tracker_conn)
             if(command == "download"):
                 file_name = input()
                 download(tracker_conn, file_name)
@@ -327,4 +291,4 @@ if __name__ == "__main__":
                 os._exit(0)
         server_thread.join()
     else:
-        print("Login again")
+        print("login again")
