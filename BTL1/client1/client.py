@@ -2,16 +2,112 @@ import socket
 import threading
 import json
 from collections import defaultdict
+import os
+import hashlib
+import base64
 
 TRACKER_PORT = 50000
 TRACKER_ADDRESS = "127.0.0.1" #Random IP  :vvv
 # PROXY_PORT =
 # PROXY_ADDRESS = 
-CLIENT_PORT = 61000
 LOCAL_SERVER_ADDRESS = "127.0.0.1"
 LOCAL_SERVER_PORT = 61001
+HOSTNAME = ""
 
-online = True
+PIECE_SIZE = 524288  # 524288 byte = 512KB
+
+online = True # Determine srever_thread is running or not
+
+def send_with_retry(tracker_conn, data, timeout = 2, max_retries = 3):
+    retries = 0
+    while retries < max_retries:
+        try:
+            # print(data)
+            tracker_conn.sendall(json.dumps(data).encode() + b'\n')
+            tracker_conn.settimeout(timeout)
+            response = tracker_conn.recv(4096).decode()
+            response = json.loads(response)
+            print(response)
+            tracker_conn.settimeout(None)  # Reset timeout
+            return response  # If successful, return the received data
+        except socket.timeout:
+            retries += 1
+            print(f"Timeout occurred, retrying {retries}/{max_retries}...")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            break  # Exit on other errors
+        finally:
+            print("[TEST] Function send_with_retry run ok")
+    
+    return None  # If max retries reached, return None
+
+def hash_piece(piece):
+    sha256 = hashlib.sha256()  # Using SHA-256 instead of SHA-1
+    sha256.update(piece)
+    return sha256.digest()
+
+def create_pieces_string(path):
+    with open(path, "rb") as data:
+        piece_data = data.read()
+        hashed_piece = hash_piece(piece_data)
+        
+        # Convert bytes to a base64-encoded string
+        return base64.b64encode(hashed_piece).decode('utf-8')
+
+def send_piece_to_tracker(tracker_conn, publish_order, file_name, file_size, hashes, piece_size):
+    global HOSTNAME
+    global LOCAL_SERVER_ADDRESS
+    global LOCAL_SERVER_PORT
+    
+    for i in publish_order: # 1 2
+        data = {
+            "option": "publish",
+            "IP": LOCAL_SERVER_PORT,
+            "port": LOCAL_SERVER_PORT,
+            "hostname": HOSTNAME[0],
+            "file_name": file_name,
+            "file_size": file_size,
+            "piece_size": piece_size[i - 1],
+            "piece_order": i,
+            "piece_hash": hashes[i - 1]
+        }
+        result = send_with_retry(tracker_conn, data)
+    print(f"[TEST] Result = {result}")
+    if result:
+        print("[PUBLISH] Publish file successful")
+    print("[TEST] Function send_piece_to_tracker run ok")
+
+def get_publish_input(size):
+    while True:
+        inp = input("Input piece order to publish:").split()
+        if not inp:
+            continue
+        try:
+            inp = [int(i) for i in inp]
+            if all(0 < i <= size for i in inp) and len(inp) == len(set(inp)):
+                return inp
+            else:
+                print(f"All numbers must be unique and between 1 and {size}. Please try again.")
+        except ValueError:
+            print("Please enter valid integers.")
+
+def split_file(file_name, size = PIECE_SIZE):
+    result = []
+    counter = 1
+    with open(file_name, "rb") as file:
+        for piece_data in iter(lambda: file.read(size), b''):
+            piece_file_path = f"{file_name}_piece{counter}"
+            with open(piece_file_path, "wb") as piece_file:
+                piece_file.write(piece_data)
+            result.append(piece_file_path)
+            counter += 1
+    return result
+
+def check_local_files(file_name):
+    if not os.path.exists(file_name):
+        return False
+    else:
+        return True
 
 # Function to select the best destination based on piece_order and priority
 def select_destination_by_order(destinations):
@@ -80,28 +176,26 @@ def add_priority(data):
         print(f"Piece {peer['piece_order']} stores at {peer['hostname']} ({peer['IP']}, {peer['port']})\n")
     return sorted_result
 
-def send_with_retry(tracker_conn, data, timeout = 2, max_retries = 3):
-    retries = 0
-    while retries < max_retries:
-        try:
-            tracker_conn.sendall(json.dumps(data).encode() + b'\n')
-            tracker_conn.settimeout(timeout)
-            metainfo = json.loads(tracker_conn.recv(4096).decode())
-            tracker_conn.settimeout(None)  # Reset timeout
-            return metainfo  # If successful, return the received data
-        except socket.timeout:
-            retries += 1
-            print(f"Timeout occurred, retrying {retries}/{max_retries}...")
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            break  # Exit on other errors
-        finally:
-            print("TEST Function send_with_retry run ok")
-    
-    return None  # If max retries reached, return None
-
-def publish():
-    print("publish")
+def publish(tracker_conn):
+    file_name = input("Input file name: ")
+    is_exist = check_local_files(file_name)
+    if is_exist:
+        file_size = os.path.getsize(file_name)
+        pieces = split_file(file_name)
+        hashes = []
+        piece_size = []
+        for piece in pieces:
+            print(f"Piece {pieces.index(piece) + 1}: {piece}")
+            hashes.append(create_pieces_string(piece))
+            piece_size.append(os.path.getsize(piece))
+            # print(piece)
+        publish_order = get_publish_input(len(pieces))
+        send_piece_to_tracker(tracker_conn, publish_order, file_name, file_size, hashes, piece_size)
+        # print(pieces)
+        # print(hashes)
+        # print(publish_order)
+    else :
+        print("[PUBLISH] File not exist")
 
 def ping():
     print("ping")
@@ -122,9 +216,9 @@ def download(tracker_conn, file_name):
         metainfo = send_with_retry(tracker_conn, data)
         peers = metainfo['metainfo']
         if metainfo is not None:
-            print("Successfully received metainfo")
+            print("[DOWNLOAD] Successfully received metainfo")
         else:
-            print("Failed to receive metainfo after retries.")
+            print("[DOWNLOAD] Failed to receive metainfo after retries.")
             return 
         sorted = add_priority(peers)
         send_requests(sorted)
@@ -166,6 +260,7 @@ def server_main():
     server_socket.close()
 
 def connect_to_tracker(email = "email", password = "password"):
+    global HOSTNAME
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((TRACKER_ADDRESS, TRACKER_PORT))
     sock.sendall(json.dumps({'email': email, 'password': password}).encode() + b'\n')
@@ -173,7 +268,7 @@ def connect_to_tracker(email = "email", password = "password"):
     result = sock.recv(4096).decode()
     result = json.loads(result)
     status = result['status']
-
+    HOSTNAME = result['hostname']
     if status:
         print("[TEST] Function connect_to_tracker run ok1")
         return sock
@@ -189,19 +284,21 @@ if __name__ == "__main__":
     if tracker_conn:
         server_thread = threading.Thread(target=server_main)
         server_thread.start()
-        while online:
-            command = input()
+        while True:
+            command = input("Input command (download/ping/publish/exit):")
             if(command == "download"):
-                file_name = input()
+                file_name = input("Input file name to download: ")
                 download(tracker_conn, file_name)
             elif(command == "ping"):
                 ping()
             elif(command == "publish"):
-                publish()
+                publish(tracker_conn)
             elif(command == "exit"):
                 # Remember to close all the conn and join all thread
                 # Just in case
+                os._exit(0)
                 online = False
-        server_thread.join()
+                server_thread.join()
+                
     else:
         print("Login again")

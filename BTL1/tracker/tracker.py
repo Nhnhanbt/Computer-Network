@@ -7,8 +7,8 @@ import os
 TRACKER_PORT = 50000
 TRACKER_ADDRESS = "127.0.0.1" #Random IP  :vvv
 
-con = mysql.connect(host="localhost", user="root", password="", database="computer_network")
-cursor=con.cursor()
+connection_to_db = mysql.connect(host="localhost", user="root", password="", database="computer_network")
+cursor=connection_to_db.cursor()
 # cursor.execute("Some query"")
 
 living_conn = []
@@ -19,8 +19,12 @@ def view_peers():
 def ping():
     print("ping")
 
+def response_publish(conn):
+    conn.sendall(json.dumps({"status": True}).encode())
+    
 def client_handler(conn, addr):
     login(conn, addr)
+    print("[LOGIN] Logined, listening...")
     while True:
         req = conn.recv(4096).decode()
         if not req:
@@ -30,8 +34,8 @@ def client_handler(conn, addr):
         request = json.loads(req)
         req_option = request['option']
         ip = addr[0]
-        port = request['peers_port'] if 'peers_port' in request else ""
-        hostname = request['peers_hostname'] if 'peers_hostname' in request else ""
+        port = request['port'] if 'port' in request else ""
+        hostname = request['hostname'] if 'hostname' in request else ""
         file_name = request['file_name'] if 'file_name' in request else ""
         file_size = request['file_size'] if 'file_size' in request else ""
         piece_hash = request['piece_hash'] if 'piece_hash' in request else ""
@@ -70,8 +74,25 @@ def client_handler(conn, addr):
                     conn.sendall(json.dumps({'metainfo': metainfo}).encode())
                 else :
                     conn.sendall(json.dumps({'metainfo': []}).encode())
+            
             case "publish":
-                print("Case publish\n")
+                print("[PUBLISH] Publish start successful")
+                delete_query = """
+                    DELETE FROM peers
+                    WHERE hostname = %s AND file_name = %s AND piece_order = %s; 
+                """
+                cursor.execute(delete_query, (hostname, file_name, piece_order))
+                connection_to_db.commit()
+                insert_query = """
+                    INSERT INTO peers (ip, port, hostname, file_name, file_size, piece_hash, piece_size, piece_order)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                cursor.execute(insert_query, (ip, port, hostname, file_name, file_size, piece_hash, piece_size, piece_order))
+                connection_to_db.commit()
+                response_publish(conn)
+                print(ip, port, hostname, file_name, file_size, piece_hash, piece_size, piece_order)
+                print("[PUBLISH] Publish successful")
+
             case "close":
                 print("Case close\n")
             
@@ -92,9 +113,15 @@ def login(conn, addr):
                 if successfull:
                     for hostname in successfull: peer_info = {'status': True, 'hostname': hostname}
                     conn.sendall(json.dumps(peer_info).encode())
-                    living_conn.append(conn)
+                    if conn not in living_conn:
+                        living_conn.append(conn)
                     # print(conn)
                     print("[CONNECTION] Living connection: ", len(living_conn))
+                    # cursor.execute("""
+                    #     INSERT INTO peers (host, column1, column2, ...)
+                    #     VALUES ('host_value', 'value1', 'value2', ...)
+                    #     ON DUPLICATE KEY UPDATE host = host;
+                    # """, (email, password))
                     return True
                 else :
                     conn.sendall(json.dumps({'status': False}).encode())
@@ -107,7 +134,7 @@ def login(conn, addr):
 
 def terminal():
     option = input()
-    while option != "close":
+    while option != "exit":
         if option == "ping":
             ping()
         elif option == "view_peers":
@@ -130,7 +157,6 @@ def server_main():
             thread = threading.Thread(target=client_handler, args=(conn, addr))
             thread.start()
             print(f"[SERVER] Active connections: {threading.active_count() - 1}")
-            thread.join()
             # print("[TEST] Finding bug")
 
     except Exception as error:
