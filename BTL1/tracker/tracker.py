@@ -13,6 +13,7 @@ cursor=connection_to_db.cursor()
 # cursor.execute("Some query"")
 
 living_conn = []
+public_keys = []
 public_key, private_key = None, None
 
 def view_peers():
@@ -46,10 +47,7 @@ def client_handler(conn, addr):
         piece_hash = request['piece_hash'] if 'piece_hash' in request else ""
         piece_size = request['piece_size'] if 'piece_size' in request else ""
         piece_order = request['piece_order'] if 'piece_order' in request else ""
-
         match req_option:
-            case "signup":
-                signup(conn, request)
             case "download":
                 num_order_in_file_str = ','.join(map(str, piece_order))
                 piece_hash_str = ','.join(map(str, piece_hash))
@@ -190,52 +188,18 @@ def generate_keypair():
     return ((e, n), (d, n))
 
 # Encode
-def encodeRsa(data):
-    _code = data['code']
-    public_key = data['key']
-    e, n = public_key
+def encodeRsa(data, conn):
+    _code = json.dumps(data)
+    pkey = public_keys[living_conn.index(conn)]
+    e, n = pkey
     _encode = [pow(ord(char), e, n) for char in _code]
     return _encode
 
 # Decode
-def decodeRsa(data):
-    _encode = data['code']
-    private_key = data['key']
+def decodeRsa(_encode):
     d, n = private_key
     _decode = ''.join(chr(pow(char, d, n)) for char in _encode)
-    return _decode
-
-def signup(conn, request):
-    try:
-        email_data = {
-            'code': request['email'],
-            'key': private_key
-        }
-        password_data = {
-            'code': request['password'],
-            'key': private_key
-        }
-        email = decodeRsa(email_data)
-        password = decodeRsa(password_data)
-
-        # Kiểm tra xem email đã tồn tại trong database chưa
-        cursor.execute("SELECT * FROM login WHERE email = %s;", (email,))
-        existing_user = cursor.fetchone()
-
-        if existing_user:
-            conn.sendall(json.dumps({'status': False, 'message': 'Email already exists'}).encode())
-        else:
-            # Thêm người dùng mới vào database
-            cursor.execute("INSERT INTO login (email, password) VALUES (%s, %s);",
-                           (email, password))
-            con.commit()
-            conn.sendall(json.dumps({'status': True}).encode())
-            print(f"[SIGNUP] New user created: {email}")
-    except Exception as error:
-        print("[ERROR] Function signup error:", error)
-        conn.sendall(json.dumps({'status': False, 'message': 'Signup failed'}).encode())
-    finally:
-        print("[TEST] Function signup run ok")
+    return json.loads(_decode)
 
 def terminal():
     option = input()
