@@ -19,6 +19,8 @@ PIECE_SIZE = 524288  # 524288 byte = 512KB
 # public_key_server = None
 # PUBLIC_KEY = None
 # PRIVATE_KEY = None
+# public_key_server = None
+# public_key, private_key = None, None
 online = True # Determine srever_thread is running or not
 
 def send_with_retry(tracker_conn, data, timeout = 2, max_retries = 3):
@@ -299,6 +301,7 @@ def server_main():
         thread.join()
     server_socket.close()
 
+
 def connect_to_tracker():
     try :
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -357,6 +360,7 @@ def signup(conn, email, password):
     finally:
         print("[TEST] Function signup run ok")
 
+
 # def is_prime(num):
 #     if num < 2:
 #         return False
@@ -411,6 +415,7 @@ def signup(conn, email, password):
 #     _decode = ''.join(chr(pow(char, d, n)) for char in _encode)
 #     return json.loads(_decode)
 
+
 def logout(tracker_conn):
     try:
         tracker_conn.sendall(json.dumps({'option': 'logout_request'}).encode())
@@ -461,7 +466,7 @@ def auth(tracker_conn):
         elif command == "exit":
             os._exit(0)
 if __name__ == "__main__":
-    while True:
+while True:
         tracker_conn = None
         while not tracker_conn:
             tracker_conn = connect_to_tracker()

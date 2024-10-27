@@ -13,6 +13,7 @@ cursor=connection_to_db.cursor()
 # cursor.execute("Some query"")
 
 living_conn = []
+public_keys = []
 public_key, private_key = None, None
 
 def view_peers():
@@ -46,7 +47,6 @@ def client_handler(conn, addr):
         piece_hash = request['piece_hash'] if 'piece_hash' in request else ""
         piece_size = request['piece_size'] if 'piece_size' in request else ""
         piece_order = request['piece_order'] if 'piece_order' in request else ""
-
         match req_option:
             case "login":
                 email = request['email']
@@ -56,6 +56,7 @@ def client_handler(conn, addr):
                 email = request['email']
                 password = request['password']
                 signup(conn,  email, password)
+
             case "download":
                 num_order_in_file_str = ','.join(map(str, piece_order))
                 piece_hash_str = ','.join(map(str, piece_hash))
@@ -237,6 +238,7 @@ def signup(conn,  email, password):
         # conn.sendall(json.dumps({'status': False, 'mes': 'Signup failed'}).encode())
     finally:
         print("[TEST] Function signup run ok")
+
 
 def terminal():
     option = input()
