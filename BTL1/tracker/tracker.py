@@ -25,15 +25,15 @@ def response_publish(conn):
     conn.sendall(json.dumps({"status": True}).encode())
     
 def client_handler(conn, addr):
-    global public_key
-    conn.sendall(json.dumps({"public_key": public_key}).encode())
-    print(f"[INFO] Sent public key to client at {addr}")
-    login(conn, addr)
-    print("[LOGIN] Logined, listening...")
+    # global public_key
+    # conn.sendall(json.dumps({"public_key": public_key}).encode())
+    # print(f"[INFO] Sent public key to client at {addr}")
+    # login(conn, addr)
+    # print("[LOGIN] Logined, listening...")
     while True:
         req = conn.recv(4096).decode()
         if not req:
-            break
+            continue
         
         # Determine request
         request = json.loads(req)
@@ -48,8 +48,14 @@ def client_handler(conn, addr):
         piece_order = request['piece_order'] if 'piece_order' in request else ""
 
         match req_option:
+            case "login":
+                email = request['email']
+                password = request['password']
+                login(conn, email, password)
             case "signup":
-                signup(conn, request)
+                email = request['email']
+                password = request['password']
+                signup(conn,  email, password)
             case "download":
                 num_order_in_file_str = ','.join(map(str, piece_order))
                 piece_hash_str = ','.join(map(str, piece_hash))
@@ -57,12 +63,13 @@ def client_handler(conn, addr):
                 # Execute the query
                 cursor.execute("""
                     SELECT * FROM peers 
-                    WHERE file_names = %s 
+                    WHERE file_name = %s 
                     AND piece_order NOT IN (%s) 
                     AND piece_hash NOT IN (%s)
                     ORDER BY piece_order ASC;
                 """, (file_name, num_order_in_file_str, piece_hash_str))
                 result = cursor.fetchall()
+                # print(result)
                 if result:
                     metainfo = []
                     for ID, IP, port, hostname, file_name, file_size, piece_hash, piece_size, piece_order in result:
@@ -112,18 +119,16 @@ def client_handler(conn, addr):
                 conn.close()
                 break
             
-def login(conn, addr):
+def login(conn, email, password):
     try:
         while True:
-            login_info = conn.recv(4096).decode()
-            if (not login_info):
-                print("[LOGIN] Missing email/password")
-                conn.sendall(json.dumps({'status': False}).encode())
+            if not email:
+                conn.sendall(json.dumps({'status': False, 'mes': '[LOGIN] Missing email'}).encode())
+                return False
+            elif not email:
+                conn.sendall(json.dumps({'status': False, 'mes': '[LOGIN] Missing password'}).encode())
                 return False
             else :
-                login_info = json.loads(login_info)
-                email = login_info['email']
-                password = login_info['password']
                 cursor.execute("SELECT email FROM login WHERE email = %s AND password = %s;", (email, password))
                 successfull = cursor.fetchall()
                 if successfull:
@@ -133,11 +138,19 @@ def login(conn, addr):
                         living_conn.append(conn)
                     # print(conn)
                     print("[CONNECTION] Living connection: ", len(living_conn))
-                    # cursor.execute("""
-                    #     INSERT INTO peers (host, column1, column2, ...)
-                    #     VALUES ('host_value', 'value1', 'value2', ...)
-                    #     ON DUPLICATE KEY UPDATE host = host;
-                    # """, (email, password))
+                    IP, port = conn.getpeername()
+                    hostname = peer_info['hostname'][0]
+                    # Assuming conn is your socket object
+
+                    print("Client IP:", IP)
+                    print("Client Port:", port)
+
+                    cursor.execute("""
+                        UPDATE peers
+                        SET IP = %s, port = %s
+                        WHERE hostname = %s;
+                    """, (IP, port, hostname))
+                    connection_to_db.commit()
                     return True
                 else :
                     conn.sendall(json.dumps({'status': False}).encode())
@@ -148,92 +161,80 @@ def login(conn, addr):
         # erase info of this conn in table peers before close connection
         print("[LOGIN] Function login run ok")
 
-def is_prime(num):
-    if num < 2:
-        return False
-    for i in range(2, int(num ** 0.5) + 1):
-        if num % i == 0:
-            return False
-    return True
+# def is_prime(num):
+#     if num < 2:
+#         return False
+#     for i in range(2, int(num ** 0.5) + 1):
+#         if num % i == 0:
+#             return False
+#     return True
 
-def generate_large_prime(min_val=50):
-    prime = random.randint(min_val, min_val * 2)
-    while not is_prime(prime):
-        prime = random.randint(min_val, min_val * 2)
-    return prime
+# def generate_large_prime(min_val=50):
+#     prime = random.randint(min_val, min_val * 2)
+#     while not is_prime(prime):
+#         prime = random.randint(min_val, min_val * 2)
+#     return prime
      
-# Modulo inverse
-def mod_inverse(e, phi):
-    d, x1, x2, y1 = 0, 0, 1, 1
-    temp_phi = phi
-    while e > 0:
-        temp1, temp2 = temp_phi // e, temp_phi - temp_phi // e * e
-        temp_phi, e = e, temp2
-        x, y = x2 - temp1 * x1, d - temp1 * y1
-        x2, x1, d, y1 = x1, x, y1, y
-    if temp_phi == 1:
-        return d + phi
-    return None
+# # Modulo inverse
+# def mod_inverse(e, phi):
+#     d, x1, x2, y1 = 0, 0, 1, 1
+#     temp_phi = phi
+#     while e > 0:
+#         temp1, temp2 = temp_phi // e, temp_phi - temp_phi // e * e
+#         temp_phi, e = e, temp2
+#         x, y = x2 - temp1 * x1, d - temp1 * y1
+#         x2, x1, d, y1 = x1, x, y1, y
+#     if temp_phi == 1:
+#         return d + phi
+#     return None
 
-# create RSA key
-def generate_keypair():
-    p = generate_large_prime()
-    q = generate_large_prime()  
-    while q == p:               
-        q = generate_large_prime()
-    n = p * q
-    phi = (p - 1) * (q - 1)
-    e = random.randrange(2, phi)
-    while mod_inverse(e, phi) is None:
-        e = random.randrange(2, phi)
-    d = mod_inverse(e, phi)
-    return ((e, n), (d, n))
+# # create RSA key
+# def generate_keypair():
+#     p = generate_large_prime()
+#     q = generate_large_prime()  
+#     while q == p:               
+#         q = generate_large_prime()
+#     n = p * q
+#     phi = (p - 1) * (q - 1)
+#     e = random.randrange(2, phi)
+#     while mod_inverse(e, phi) is None:
+#         e = random.randrange(2, phi)
+#     d = mod_inverse(e, phi)
+#     return ((e, n), (d, n))
 
-# Encode
-def encodeRsa(data):
-    _code = data['code']
-    public_key = data['key']
-    e, n = public_key
-    _encode = [pow(ord(char), e, n) for char in _code]
-    return _encode
+# # Encode
+# def encodeRsa(data):
+#     _code = data['code']
+#     public_key = data['key']
+#     e, n = public_key
+#     _encode = [pow(ord(char), e, n) for char in _code]
+#     return _encode
 
-# Decode
-def decodeRsa(data):
-    _encode = data['code']
-    private_key = data['key']
-    d, n = private_key
-    _decode = ''.join(chr(pow(char, d, n)) for char in _encode)
-    return _decode
+# # Decode
+# def decodeRsa(data):
+#     _encode = data['code']
+#     private_key = data['key']
+#     d, n = private_key
+#     _decode = ''.join(chr(pow(char, d, n)) for char in _encode)
+#     return _decode
 
-def signup(conn, request):
+def signup(conn,  email, password):
     try:
-        email_data = {
-            'code': request['email'],
-            'key': private_key
-        }
-        password_data = {
-            'code': request['password'],
-            'key': private_key
-        }
-        email = decodeRsa(email_data)
-        password = decodeRsa(password_data)
-
         # Kiểm tra xem email đã tồn tại trong database chưa
         cursor.execute("SELECT * FROM login WHERE email = %s;", (email,))
         existing_user = cursor.fetchone()
 
         if existing_user:
-            conn.sendall(json.dumps({'status': False, 'message': 'Email already exists'}).encode())
+            conn.sendall(json.dumps({'status': False, 'mes': 'Email already exists'}).encode())
         else:
             # Thêm người dùng mới vào database
-            cursor.execute("INSERT INTO login (email, password) VALUES (%s, %s);",
-                           (email, password))
+            cursor.execute("INSERT INTO login (email, password) VALUES (%s, %s);", (email, password))
             connection_to_db.commit()
-            conn.sendall(json.dumps({'status': True}).encode())
+            conn.sendall(json.dumps({'status': True, 'mes': 'Sign up successful'}).encode())
             print(f"[SIGNUP] New user created: {email}")
     except Exception as error:
         print("[ERROR] Function signup error:", error)
-        conn.sendall(json.dumps({'status': False, 'message': 'Signup failed'}).encode())
+        # conn.sendall(json.dumps({'status': False, 'mes': 'Signup failed'}).encode())
     finally:
         print("[TEST] Function signup run ok")
 
@@ -248,10 +249,10 @@ def terminal():
     os._exit(0)
 
 def server_main():
-    global public_key, private_key
-    public_key, private_key = generate_keypair()
-    print("[INFO] Public Key:", public_key)
-    print("[INFO] Private Key:", private_key)
+    # global public_key, private_key
+    # public_key, private_key = generate_keypair()
+    # print("[INFO] Public Key:", public_key)
+    # print("[INFO] Private Key:", private_key)
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # IPv4 and TCP/IP
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # Config: can reuse IP immediately after closed
     server_socket.bind((TRACKER_ADDRESS, TRACKER_PORT))

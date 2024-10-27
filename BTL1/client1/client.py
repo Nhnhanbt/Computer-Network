@@ -15,9 +15,10 @@ LOCAL_SERVER_ADDRESS = "127.0.0.1"
 LOCAL_SERVER_PORT = 61001
 HOSTNAME = ""
 
-
 PIECE_SIZE = 524288  # 524288 byte = 512KB
-public_key_server = None
+# public_key_server = None
+# PUBLIC_KEY = None
+# PRIVATE_KEY = None
 online = True # Determine srever_thread is running or not
 
 def send_with_retry(tracker_conn, data, timeout = 2, max_retries = 3):
@@ -66,7 +67,7 @@ def send_piece_to_tracker(tracker_conn, publish_order, file_name, file_size, has
             "option": "publish",
             "IP": LOCAL_SERVER_PORT,
             "port": LOCAL_SERVER_PORT,
-            "hostname": HOSTNAME[0],
+            "hostname": HOSTNAME,
             "file_name": file_name,
             "file_size": file_size,
             "piece_size": piece_size[i - 1],
@@ -93,10 +94,10 @@ def get_publish_input(size):
         except ValueError:
             print("Please enter valid integers.")
 
-def split_file(file_name, size = PIECE_SIZE):
+def split_file(path, file_name, size = PIECE_SIZE):
     result = []
     counter = 1
-    with open(file_name, "rb") as file:
+    with open(path, "rb") as file:
         for piece_data in iter(lambda: file.read(size), b''):
             piece_file_path = f"{file_name}_piece{counter}"
             with open(piece_file_path, "wb") as piece_file:
@@ -113,20 +114,24 @@ def check_local_files(file_name):
 
 # Function to select the best destination based on piece_order and priority
 def select_destination_by_order(destinations):
+    print("[TEST] Function select_destination_by_order start")
     grouped_by_order = defaultdict(list)
+    print(destinations)
     for dest in destinations:
-        grouped_by_order[dest['order']].append(dest)
+        grouped_by_order[dest['piece_order']].append(dest)
     selected_destinations = []
     # Sort by priority and select the destination with the lowest prio for each order
     for order, group in grouped_by_order.items():
         group = sorted(group, key=lambda x: x['prio'])
         selected_destinations.append(group)
-    
+    print("[TEST] Function select_destination_by_order run ok")
     return selected_destinations
 
 # Function to send and receive data via socket
 def send_receive_data(ip, port, message="Hello"):
+    print("[TEST] Function send_receive_data start")
     try:
+        port = int(port)
         # Create a socket object
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # Set a timeout (in case the destination is unreachable)
@@ -145,6 +150,8 @@ def send_receive_data(ip, port, message="Hello"):
     except (socket.timeout, socket.error) as e:
         print(f"Connection to {ip}:{port} failed: {e}")
         return False  # If send/receive failed
+    finally:
+        print("[TEST] Function send_receive_data run ok")
 
 # Main function to handle sending data to the best destination
 def send_requests(destinations):
@@ -155,10 +162,11 @@ def send_requests(destinations):
         for dest in group:  # Try each destination in order of priority
             success = send_receive_data(dest['IP'], dest['port'])
             if success:
-                print(f"[TEST] Successfully communicated with {dest['host']} (IP: {dest['IP']}) for order {dest['order']}")
+                print(f"[TEST] Successfully communicated with {dest['hostname']} (IP: {dest['IP']}) for order {dest['piece_order']}")
                 break  # Stop trying other destinations for this order
             else:
-                print(f"[TEST] Failed to communicate with {dest['host']} (IP: {dest['IP']}) for order {dest['order']}, trying next priority.")
+                print(f"[TEST] Failed to communicate with {dest['hostname']} (IP: {dest['IP']}) for order {dest['piece_order']}, trying next priority.")
+    print("[TEST] Function send_requests run ok")
 
 def add_priority(data):
     print("[TEST] Function add_priority start")
@@ -175,15 +183,16 @@ def add_priority(data):
     print("[TEST] Function add_priority run ok")
     print("Sorted peers info:")
     for peer in sorted_result:
-        print(f"Piece {peer['piece_order']} stores at {peer['hostname']} ({peer['IP']}, {peer['port']})\n")
+        print(f"Piece {peer['piece_order']} stores at {peer['hostname']} ({peer['IP']}, {peer['port']})")
     return sorted_result
 
 def publish(tracker_conn):
-    file_name = input("Input file name: ")
-    is_exist = check_local_files(file_name)
+    path = input("Input path to that file name: ")
+    file_name = os.path.basename(path)
+    is_exist = check_local_files(path)
     if is_exist:
-        file_size = os.path.getsize(file_name)
-        pieces = split_file(file_name)
+        file_size = os.path.getsize(path)
+        pieces = split_file(path, file_name)
         hashes = []
         piece_size = []
         for piece in pieces:
@@ -202,6 +211,30 @@ def publish(tracker_conn):
 def ping():
     print("ping")
 
+def local_pieces(file_name):
+    pieces = []
+    directory = os.getcwd() 
+    all_files = os.listdir(directory)
+    
+    for filename in all_files:
+        if filename.startswith(file_name) and filename[len(file_name)] == '_':
+            part = filename[len(file_name) + 1:]
+            if part.startswith('piece') and part[5:].isdigit():
+                pieces.append(filename)
+    
+    return pieces if pieces else []
+
+def hash_local_piece(pieces):
+    hashes = []
+    for piece in pieces:
+        hashes.append(create_pieces_string(piece))
+    return hashes
+
+def local_piece_order(file_name):
+    present_pieces = local_pieces(file_name)
+    present_orders = set(int(piece.split("_piece")[-1]) for piece in present_pieces)
+    return list(present_orders)
+
 def download(tracker_conn, file_name):
     try:
         # Check local info of requested file
@@ -209,8 +242,13 @@ def download(tracker_conn, file_name):
         hashes = hash_local_piece(pieces)
         piece_order = local_piece_order(file_name)
         
+        print(pieces)
+        print(hashes)
+        print(piece_order)
+
         # Send to tracker to request for peers info
         data = {
+            'option': 'download',
             "file_name": file_name,
             "piece_hash": hashes,
             "piece_order": piece_order
@@ -225,7 +263,7 @@ def download(tracker_conn, file_name):
         sorted = add_priority(peers)
         send_requests(sorted)
     except Exception as error:
-        print("[ERROR] Function download error")
+        print(f"[ERROR] Function download {error}")
     finally:
         print("[TEST] Function download run ok")
 
@@ -236,7 +274,7 @@ def send_file(conn, addr):
         peer_data = json.loads(peer_data)
         # Not completed
     except Exception as error:
-        print("[ERROR] Function send_file error")
+        print(f"[ERROR] Function send_file {error}")
     finally:
         conn.close()
 
@@ -254,126 +292,124 @@ def server_main():
             thread.start()
             threads.append(thread)
         except Exception as error:
-            print("[ERROR] Function server_main error")
+            print(f"[ERROR] Function server_main {error}")
             break
 
     for thread in threads:
         thread.join()
     server_socket.close()
 
-def connect_to_tracker(email = "email", password = "password"):
-    global HOSTNAME
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect((TRACKER_ADDRESS, TRACKER_PORT))
-    global public_key_server
-    server_response = sock.recv(4096).decode()
-    server_data = json.loads(server_response)
-    public_key_server = server_data.get("public_key", None)
-    if public_key_server:
-        print("[INFO] Received server's public key:", public_key_server)
-    else:
-        print("[ERROR] Failed to retrieve public key from server.")
-        return None
+def connect_to_tracker():
+    try :
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((TRACKER_ADDRESS, TRACKER_PORT))
+        if sock:
+            print("[CONNECTION] Connected to tracker")
+            return sock
+        else:
+            print("[ERROR] Failed to connect server.")
+            return None
+    finally:
+        print("[TEST] Function connect_to_tracker run ok")
     
-    sock.sendall(json.dumps({'email': email, 'password': password}).encode() + b'\n')
+def login(conn, email, password):
+    try: 
+        global HOSTNAME
+        data = {
+            'option': 'login',
+            'email': email, 
+            'password': password
+        }
+        response = send_with_retry(conn, data)
+        status = response['status']
+        HOSTNAME = response['hostname'][0]
+        print(HOSTNAME)
+        if status:
+            print("[LOGIN] Login successful.")
+            return status
+        else:
+            mes = response['mes']
+            print(mes)
+            return False
+    except Exception as error:
+        print("[ERROR] Function signup error:", error)
+    finally:
+        print("[TEST] Function signup run ok")
     
-    result = sock.recv(4096).decode()
-    result = json.loads(result)
-    status = result['status']
-    HOSTNAME = result['hostname']
-    if status:
-        print("[TEST] Function connect_to_tracker run ok1")
-        return sock
-    else :
-        print("[TEST] Function connect_to_tracker run ok2")
-        return None
-    
-def signup(tracker_conn):
+def signup(conn, email, password):
     try:
-        email = input("Enter your email: ")
-        password = input("Enter your password: ")
-        email_data = {
-            'code': email,
-            'key': public_key_server
-        }
-        password_data = {
-            'code': password,
-            'key': public_key_server
-        }
         signup_data = {
             'option': 'signup',
-            'email': encodeRsa(email_data),
-            'password': encodeRsa(password_data)
+            'email': email,
+            'password': password
         }
-        tracker_conn.sendall(json.dumps(signup_data).encode() + b'\n')
-        response = tracker_conn.recv(4096).decode()
-        result = json.loads(response)
-        if result['status']:
-            print("Signup successful! Please log in.")
+        result = send_with_retry(conn, signup_data)
+        status = result['status']
+        if status:
+            print(f"[SIGNUP] {result['mes']}")
+            return True
         else:
-            print("Signup failed: ", result['message'])
+            mes = result['mes']
+            print(mes)
+            return False
     except Exception as error:
         print("[ERROR] Function signup error:", error)
     finally:
         print("[TEST] Function signup run ok")
 
-def is_prime(num):
-    if num < 2:
-        return False
-    for i in range(2, int(num ** 0.5) + 1):
-        if num % i == 0:
-            return False
-    return True
+# def is_prime(num):
+#     if num < 2:
+#         return False
+#     for i in range(2, int(num ** 0.5) + 1):
+#         if num % i == 0:
+#             return False
+#     return True
 
-def generate_large_prime(min_val=50):
-    prime = random.randint(min_val, min_val * 2)
-    while not is_prime(prime):
-        prime = random.randint(min_val, min_val * 2)
-    return prime
+# def generate_large_prime(min_val=50):
+#     prime = random.randint(min_val, min_val * 2)
+#     while not is_prime(prime):
+#         prime = random.randint(min_val, min_val * 2)
+#     return prime
      
-# Modulo inverse
-def mod_inverse(e, phi):
-    d, x1, x2, y1 = 0, 0, 1, 1
-    temp_phi = phi
-    while e > 0:
-        temp1, temp2 = temp_phi // e, temp_phi - temp_phi // e * e
-        temp_phi, e = e, temp2
-        x, y = x2 - temp1 * x1, d - temp1 * y1
-        x2, x1, d, y1 = x1, x, y1, y
-    if temp_phi == 1:
-        return d + phi
-    return None
+# # Modulo inverse
+# def mod_inverse(e, phi):
+#     d, x1, x2, y1 = 0, 0, 1, 1
+#     temp_phi = phi
+#     while e > 0:
+#         temp1, temp2 = temp_phi // e, temp_phi - temp_phi // e * e
+#         temp_phi, e = e, temp2
+#         x, y = x2 - temp1 * x1, d - temp1 * y1
+#         x2, x1, d, y1 = x1, x, y1, y
+#     if temp_phi == 1:
+#         return d + phi
+#     return None
 
-# create RSA key
-def generate_keypair():
-    p = generate_large_prime()
-    q = generate_large_prime()  
-    while q == p:               
-        q = generate_large_prime()
-    n = p * q
-    phi = (p - 1) * (q - 1)
-    e = random.randrange(2, phi)
-    while mod_inverse(e, phi) is None:
-        e = random.randrange(2, phi)
-    d = mod_inverse(e, phi)
-    return ((e, n), (d, n))
+# # create RSA key
+# def generate_keypair():
+#     p = generate_large_prime()
+#     q = generate_large_prime()  
+#     while q == p:               
+#         q = generate_large_prime()
+#     n = p * q
+#     phi = (p - 1) * (q - 1)
+#     e = random.randrange(2, phi)
+#     while mod_inverse(e, phi) is None:
+#         e = random.randrange(2, phi)
+#     d = mod_inverse(e, phi)
+#     return ((e, n), (d, n))
 
-# Encode
-def encodeRsa(data):
-    _code = data['code']
-    public_key = data['key']
-    e, n = public_key
-    _encode = [pow(ord(char), e, n) for char in _code]
-    return _encode
+# # Encode
+# def encodeRsa(data, key = public_key_server):
+#     _code = json.dumps(data)
+#     e, n = key
+#     _encode = [pow(ord(char), e, n) for char in _code]
+#     return _encode
 
-# Decode
-def decodeRsa(data):
-    _encode = data['code']
-    private_key = data['key']
-    d, n = private_key
-    _decode = ''.join(chr(pow(char, d, n)) for char in _encode)
-    return _decode
-
+# # Decode
+# def decodeRsa(_encode):
+#     d, n = PRIVATE_KEY
+#     _decode = ''.join(chr(pow(char, d, n)) for char in _encode)
+#     return json.loads(_decode)
 
 def logout(tracker_conn):
     try:
@@ -394,32 +430,60 @@ def logout(tracker_conn):
         tracker_conn.close()
         print("[DISCONNECTED] Client connection closed.")
 
+def auth(tracker_conn):
+    while True:
+        command = input("Input command (signup/login/exit):")
+        if command == "signup":
+            email = input("Input your email: ")
+            password = input("Input your password: ")
+            print("Signing up...")
+            status = signup(tracker_conn, email, password)
+            if status:
+                print("Sign up successful. Connected to tracker.")
+                # No break; continue to the main command loop
+                break
+            else:
+                print("Existed email")
+                continue
+        elif command == "login":
+            # email = input("Input your email: ")
+            # password = input("Input your password: ")
+            email = "myemail"
+            password = "mypassword"
+            status = login(tracker_conn, email, password)
+            if status:
+                print("[LOGIN] Login successful")
+                # No break; continue to the main command loop
+                break
+            else:
+                print("[LOGIN] Login failed")
+                continue
+        elif command == "exit":
+            os._exit(0)
 if __name__ == "__main__":
-    # login first
-    email = "myemail"
-    password = "mypassword"
-    tracker_conn = connect_to_tracker(email, password)
-    if tracker_conn:
+    while True:
+        tracker_conn = None
+        while not tracker_conn:
+            tracker_conn = connect_to_tracker()
+        auth(tracker_conn)
+
+        # Main command loop after successful login/signup
         server_thread = threading.Thread(target=server_main)
         server_thread.start()
-        while True:
-            command = input("Input command (sigup/download/ping/publish/exit):")
-            if(command == "signup"):
-                signup(tracker_conn)
-            elif(command == "download"):
+        online = True
+        while online:
+            command = input("Input command (download/ping/publish/logout/exit):")
+            if command == "download":
                 file_name = input("Input file name to download: ")
                 download(tracker_conn, file_name)
-            elif(command == "ping"):
+            elif command == "ping":
                 ping()
-            elif(command == "publish"):
+            elif command == "publish":
                 publish(tracker_conn)
             elif command == "logout":
-                logout(tracker_conn)
-            elif(command == "exit"):
-                # Remember to close all the conn and join all thread
-                # Just in case
-                os._exit(0)
                 online = False
-                server_thread.join()
-    else:
-        print("Login again")
+                logout(tracker_conn)
+            elif command == "exit":
+                online = False
+                logout(tracker_conn)
+                os._exit(0)
