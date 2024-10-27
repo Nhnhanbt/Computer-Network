@@ -212,6 +212,30 @@ def publish(tracker_conn):
 
 def ping():
     print("ping")
+    
+def local_pieces(file_name):
+    pieces = []
+    directory = os.getcwd() 
+    all_files = os.listdir(directory)
+    
+    for filename in all_files:
+        if filename.startswith(file_name) and filename[len(file_name)] == '_':
+            part = filename[len(file_name) + 1:]
+            if part.startswith('piece') and part[5:].isdigit():
+                pieces.append(filename)
+    
+    return pieces if pieces else []
+
+def hash_local_piece(pieces):
+    hashes = []
+    for piece in pieces:
+        hashes.append(create_pieces_string(piece))
+    return hashes
+
+def local_piece_order(file_name):
+    present_pieces = local_pieces(file_name)
+    present_orders = set(int(piece.split("_piece")[-1]) for piece in present_pieces)
+    return list(present_orders)
 
 def local_pieces(file_name):
     pieces = []
@@ -479,6 +503,7 @@ while True:
         while online:
             command = input("Input command (download/ping/publish/logout/exit):")
             if command == "download":
+
                 file_name = input("Input file name to download: ")
                 download(tracker_conn, file_name)
             elif command == "ping":

@@ -8,7 +8,7 @@ import random
 TRACKER_PORT = 50000
 TRACKER_ADDRESS = "127.0.0.1" #Random IP  :vvv
 
-connection_to_db = mysql.connect(host="localhost", user="root", password="", database="computer_network")
+connection_to_db = mysql.connect(host="localhost", user="root", password="Vnpt@123", database="computer_network")
 cursor=connection_to_db.cursor()
 # cursor.execute("Some query"")
 
