@@ -13,7 +13,7 @@ TRACKER_ADDRESS = "127.0.0.1" #Random IP  :vvv
 # PROXY_PORT =
 # PROXY_ADDRESS = 
 LOCAL_SERVER_ADDRESS = "127.0.0.1"
-LOCAL_SERVER_PORT = 61001
+LOCAL_SERVER_PORT = 61003
 HOSTNAME = ""
 
 PIECE_SIZE = 524288  # 524288 byte = 512KB
@@ -427,7 +427,7 @@ def server_main():
                 thread = threading.Thread(target=ping_handler, args=(conn, addr, data))
             else:
                 thread = threading.Thread(target=send_file, args=(conn, addr, data))
-            # thread = threading.Thread(target=send_file, args=(conn, addr))
+            # thread = threading.Thread(target=send_file, args=(conn, addr, data))
             thread.start()
             threads.append(thread)
         except Exception as error:
@@ -587,8 +587,8 @@ def auth(tracker_conn):
         elif command == "login":
             # email = input("Input your email: ")
             # password = input("Input your password: ")
-            email = "myemail"
-            password = "mypassword"
+            email = "nhan"
+            password = "nhan"
             status = login(tracker_conn, email, password)
             if status:
                 print("[LOGIN] Login successful")

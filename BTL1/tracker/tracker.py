@@ -4,6 +4,7 @@ import mysql.connector as mysql
 import json
 import os
 import random
+import time
 
 TRACKER_PORT = 50000
 TRACKER_ADDRESS = "127.0.0.1" #Random IP  :vvv
@@ -16,10 +17,44 @@ living_conn = []
 public_key, private_key = None, None
 
 def view_peers():
-    print("view_peers")
+    print("=== Current Active Peers ===")
+    if not living_conn:
+        print("No active peers.")
+        return
+    for index, conn in enumerate(living_conn, start=1):
+        ip, port = conn.getpeername()
+        print(f"{index}. IP: {ip}, Port: {port}")
+    print(f"Total active peers: {len(living_conn)}")
 
-def ping():
-    print("ping")
+def ping(ip, port, request_count=5):
+    for i in range(request_count):
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            client_socket.connect((ip, port))
+            message = f"ping | ICMP_order: {i + 1}"
+            print(f"Sending request {i + 1} to {ip}:{port}")
+            client_socket.sendall(message.encode())
+            client_socket.settimeout(2)
+            response = client_socket.recv(4096).decode()
+            print(f"Received response {i + 1}: {response} from {ip}:{port}")
+        except socket.timeout:
+            print("Request timed out.")
+        except Exception as error:
+            print(f"[ERROR] Failed to send request {i + 1} to {ip}:{port}: {error}")
+        finally:
+            client_socket.close()  
+        time.sleep(1)  
+
+def ping_handler(conn, addr, data):
+    try:
+        print(f"[INFO] Received ping request from {addr[0]}:{addr[1]}")
+        icmp_order = data.split(":")[-1].strip()
+        response_message = f"pong | ICMP_order: {icmp_order}"
+        conn.sendall(response_message.encode())
+    except Exception as error:
+        print(f"[ERROR] Failed to handle ping from {addr}: {error}")
+    finally:
+        conn.close()       
 
 def response_publish(conn):
     conn.sendall(json.dumps({"status": True}).encode())
@@ -59,7 +94,8 @@ def client_handler(conn, addr):
             case "download":
                 num_order_in_file_str = ','.join(map(str, piece_order))
                 piece_hash_str = ','.join(map(str, piece_hash))
-
+                print(str(num_order_in_file_str))
+                print(str(piece_hash_str))
                 # Execute the query
                 cursor.execute("""
                     SELECT * FROM peers 
@@ -69,7 +105,8 @@ def client_handler(conn, addr):
                     ORDER BY piece_order ASC;
                 """, (file_name, num_order_in_file_str, piece_hash_str))
                 result = cursor.fetchall()
-                # print(result)
+                print(f"SELECT * FROM peers WHERE file_name = {file_name} AND piece_order NOT IN ({num_order_in_file_str}) AND piece_hash NOT IN ({piece_hash_str}) ORDER BY piece_order ASC;")
+                print(result)
                 if result:
                     metainfo = []
                     for ID, IP, port, hostname, file_name, file_size, piece_hash, piece_size, piece_order in result:
@@ -131,8 +168,9 @@ def login(conn, email, password):
             else :
                 cursor.execute("SELECT email FROM login WHERE email = %s AND password = %s;", (email, password))
                 successfull = cursor.fetchall()
+                print(successfull)
                 if successfull:
-                    for hostname in successfull: peer_info = {'status': True, 'hostname': hostname}
+                    peer_info = {'status': True, 'hostname': email}
                     conn.sendall(json.dumps(peer_info).encode())
                     if conn not in living_conn:
                         living_conn.append(conn)
@@ -242,7 +280,16 @@ def terminal():
     option = input()
     while option != "exit":
         if option == "ping":
-            ping()
+            user_input = input("Enter command in format 'ping <ip> <port>': ")
+            parts = user_input.split()
+            if len(parts) == 3 and parts[0].lower() == "ping":
+                try:
+                    ip, port = parts[1], int(parts[2])  
+                    ping(ip, port)  
+                except ValueError:
+                    print("Invalid port. Please enter a valid integer for port.")
+            else:
+                print("Invalid input. Please enter in format 'ping <ip> <port>'.")
         elif option == "view_peers":
             view_peers()
         option = input()
@@ -264,7 +311,11 @@ def server_main():
             conn, addr = server_socket.accept()
             print(f"[ACCEPT] Connected to clients throught {conn.getsockname()}")
             print(f"[ACCEPT] Client socket: {addr}")
-            thread = threading.Thread(target=client_handler, args=(conn, addr))
+            data = conn.recv(4096).decode()
+            if data.startswith("ping"):
+                thread = threading.Thread(target=ping_handler, args=(conn, addr, data))
+            else:
+                thread = threading.Thread(target=client_handler, args=(conn, addr))
             thread.start()
             print(f"[SERVER] Active connections: {threading.active_count() - 1}")
             # print("[TEST] Finding bug")

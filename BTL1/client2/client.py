@@ -13,7 +13,7 @@ TRACKER_ADDRESS = "127.0.0.1" #Random IP  :vvv
 # PROXY_PORT =
 # PROXY_ADDRESS = 
 LOCAL_SERVER_ADDRESS = "127.0.0.1"
-LOCAL_SERVER_PORT = 61001
+LOCAL_SERVER_PORT = 61002
 HOSTNAME = ""
 
 PIECE_SIZE = 524288  # 524288 byte = 512KB
@@ -587,8 +587,8 @@ def auth(tracker_conn):
         elif command == "login":
             # email = input("Input your email: ")
             # password = input("Input your password: ")
-            email = "myemail"
-            password = "mypassword"
+            email = "tai"
+            password = "tai"
             status = login(tracker_conn, email, password)
             if status:
                 print("[LOGIN] Login successful")
