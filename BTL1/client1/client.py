@@ -256,12 +256,17 @@ def ping(ip, port, request_count=5):
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             client_socket.connect((ip, port))
-            message = f"ping | ICMP_order: {i + 1}"
+            message = {
+                'option': 'ping',
+                'message':f"ping | ICMP_order: {i + 1}"
+            }
             print(f"Sending request {i + 1} to {ip}:{port}")
-            client_socket.sendall(message.encode())
+            client_socket.sendall(json.dumps(message).encode())
             client_socket.settimeout(2)
-            response = client_socket.recv(4096).decode()
-            print(f"Received response {i + 1}: {response} from {ip}:{port}")
+            tmp = client_socket.recv(4096).decode()
+            response = json.loads(tmp)
+            mess = response['message']
+            print(f"Received response {i + 1}: {mess} from {ip}:{port}")
         except socket.timeout:
             print("Request timed out.")
         except Exception as error:
@@ -272,12 +277,22 @@ def ping(ip, port, request_count=5):
 
 def ping_handler(conn, addr, data):
     try:
+        message = data['message']
         print(f"[INFO] Received ping request from {addr[0]}:{addr[1]}")
-        icmp_order = data.split(":")[-1].strip()
-        response_message = f"pong | ICMP_order: {icmp_order}"
-        conn.sendall(response_message.encode())
+
+        if data['option'] == 'ping':
+            icmp_order = data['message'].split(":")[-1].strip()
+            response_message = {
+                'option': 'pong',
+                'message': f"pong | ICMP_order: {icmp_order}"
+            }
+            conn.sendall(json.dumps(response_message).encode())
+        else:
+            print(f"[ERROR] Unknown option received: {message['option']}")
+    except json.JSONDecodeError as json_error:
+        print(f"[ERROR] Failed to decode JSON message from {addr}: {json_error}")
     except Exception as error:
-        print(f"[ERROR] Failed to handle ping from {addr}: {error}")
+        print(f"[ERROR] Failed to handle request from {addr}: {error}")
     finally:
         conn.close()
 
@@ -388,7 +403,7 @@ def send_file(conn, addr, peer_data):
     try:
         # Receive the request from the peer
         # peer_data = conn.recv(4096).decode('utf-8').strip()
-        peer_data = json.loads(peer_data)
+        # peer_data = json.loads(peer_data)
 
         piece_name = f"{peer_data['file_name']}_piece{peer_data['piece_order']}"
         if os.path.isfile(piece_name):
@@ -423,7 +438,8 @@ def server_main():
         try:
             conn, addr = server_socket.accept()
             data = conn.recv(4096).decode()
-            if data.startswith("ping"):
+            data = json.loads(data)
+            if data['option'] == 'ping':
                 thread = threading.Thread(target=ping_handler, args=(conn, addr, data))
             else:
                 thread = threading.Thread(target=send_file, args=(conn, addr, data))
