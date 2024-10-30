@@ -96,10 +96,11 @@ def client_handler(conn, addr):
                 cursor.execute("""
                     SELECT * FROM peers 
                     WHERE file_name = %s 
+                    AND hostname NOT IN (%s)
                     AND piece_order NOT IN (%s) 
                     AND piece_hash NOT IN (%s)
                     ORDER BY piece_order ASC;
-                """, (file_name, num_order_in_file_str, piece_hash_str))
+                """, (file_name, hostname, num_order_in_file_str, piece_hash_str))
                 result = cursor.fetchall()
                 print(f"SELECT * FROM peers WHERE file_name = {file_name} AND piece_order NOT IN ({num_order_in_file_str}) AND piece_hash NOT IN ({piece_hash_str}) ORDER BY piece_order ASC;")
                 print(result)

@@ -152,6 +152,7 @@ def send_receive_data(ip, port, file_name, piece_order):
         # Send the request as JSON
         print(f"Sending data to {ip}:{port}")
         request = json.dumps({
+            'option': 'download',
             'file_name': file_name,
             'piece_order': piece_order
         }).encode('utf-8')
@@ -340,6 +341,7 @@ def local_piece_order(file_name):
     return list(present_orders)
 
 def download(tracker_conn, file_name):
+    global HOSTNAME
     try:
         if check_local_files(file_name):
             print("[DOWNLOAD] File already in local")
@@ -358,7 +360,8 @@ def download(tracker_conn, file_name):
             'option': 'download',
             "file_name": file_name,
             "piece_hash": hashes,
-            "piece_order": piece_order
+            "piece_order": piece_order,
+            "hostname": HOSTNAME
         }
         metainfo = send_with_retry(tracker_conn, data)
         peers = metainfo['metainfo']
