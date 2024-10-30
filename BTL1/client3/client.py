@@ -13,7 +13,7 @@ TRACKER_ADDRESS = "127.0.0.1" #Random IP  :vvv
 # PROXY_PORT =
 # PROXY_ADDRESS = 
 LOCAL_SERVER_ADDRESS = "127.0.0.1"
-LOCAL_SERVER_PORT = 61002
+LOCAL_SERVER_PORT = 61003
 HOSTNAME = ""
 
 PIECE_SIZE = 524288  # 524288 byte = 512KB
@@ -315,6 +315,23 @@ def merge_files(file_name, pieces, file_size):
             #os.remove(piece)
     print(f"[MERGE] Successfully merged {len(pieces)} pieces into {file_name}.")
     return True
+
+def view_peers(tracker_conn):
+    try:
+        data = {
+            'option': 'view_peers'
+        }
+        response = send_with_retry(tracker_conn, data)
+        if response:
+            print("[VIEW_PEERS] Successfully received peers info")
+            for idx, (IP, port, hostname) in enumerate(response, start=1):
+                print(f"ID:{idx} | IP:{IP} | Port:{port} | Hostname:{hostname}")
+        else:
+            print("[VIEW_PEERS] Failed to receive peers info after retries.")
+    except Exception as error:
+        print("[ERROR] Function view_peers error:", error)
+    finally:
+        print("[TEST] Function view_peers run ok")
 
 def local_pieces(file_name):
     pieces = []
@@ -631,7 +648,7 @@ if __name__ == "__main__":
         server_thread.start()
         online = True
         while online:
-            command = input("Input command (download/ping/publish/logout/exit):")
+            command = input("Input command (download/ping/publish/viewpeers/logout/exit):")
             if command == "download":
                 file_name = input("Input file name to download: ")
                 download(tracker_conn, file_name)
@@ -648,6 +665,8 @@ if __name__ == "__main__":
                     print("Invalid input. Please enter in format 'ping <ip> <port>'.")
             elif command == "publish":
                 publish(tracker_conn)
+            elif command == "viewpeers":
+                view_peers(tracker_conn)
             elif command == "logout":
                 online = False
                 logout(tracker_conn)
