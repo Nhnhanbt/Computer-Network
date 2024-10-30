@@ -18,14 +18,19 @@ public_keys = []
 public_key, private_key = None, None
 
 def view_peers():
-    print("=== Current Active Peers ===")
-    if not living_conn:
-        print("No active peers.")
-        return
-    for index, conn in enumerate(living_conn, start=1):
-        ip, port = conn.getpeername()
-        print(f"{index}. IP: {ip}, Port: {port}")
-    print(f"Total active peers: {len(living_conn)}")
+    # print("=== Current Active Peers ===")
+    # if not living_conn:
+    #     print("No active peers.")
+    #     return
+    # for index, conn in enumerate(living_conn, start=1):
+    #     ip, port = conn.getpeername()
+    #     print(f"{index}. IP: {ip}, Port: {port}")
+    # print(f"Total active peers: {len(living_conn)}")
+    cursor.execute("SELECT DISTINCT IP, port, hostname FROM peers;")
+    result = cursor.fetchall()
+    for idx, (IP, port, hostname) in enumerate(result, start=1):
+        print(f"ID:{idx} | IP:{IP} | Port:{port} | Hostname:{hostname}")
+    return result
 
 def ping(ip, port, request_count=5):
     for i in range(request_count):
@@ -141,8 +146,9 @@ def client_handler(conn, addr):
                 print(ip, port, hostname, file_name, file_size, piece_hash, piece_size, piece_order)
                 print("[PUBLISH] Publish successful")
 
-            case "close":
-                print("Case close\n")
+            case "view_peers":
+                data = view_peers()
+                conn.sendall(json.dumps(data).encode())
 
             case "logout_request":
                 conn.sendall(json.dumps({'status': 'logout_accepted'}).encode())
