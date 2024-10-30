@@ -2,14 +2,22 @@ import socket
 import threading
 import mysql.connector as mysql
 import json
-import os
+import os, sys
 import random
 import time
+
+from tkinter import Tk, messagebox
+sys.path.append(os.path.abspath("../gui"))
+from admin import GUITRACKER
+from lstadmin import GUILISTADMIN
+
+S_TERMINAL = None
+S_LIVING = None
 
 TRACKER_PORT = 50000
 TRACKER_ADDRESS = "127.0.0.1" #Random IP  :vvv
 
-connection_to_db = mysql.connect(host="localhost", user="root", password="", database="computer_network")
+connection_to_db = mysql.connect(host="localhost", user="root", password="Thanhtai19", database="computer_network")
 cursor=connection_to_db.cursor()
 # cursor.execute("Some query"")
 
@@ -32,7 +40,13 @@ def view_peers():
         print(f"ID:{idx} | IP:{IP} | Port:{port} | Hostname:{hostname}")
     return result
 
-def ping(ip, port, request_count=5):
+def ping(ip, port, window, entry, request_count=5):
+    if not ip:
+        window.after(0, lambda: messagebox.showinfo("Lỗi", "Vui lòng nhập IP"))
+        return
+    if not port:
+        window.after(0, lambda: messagebox.showinfo("Lỗi", "Vui lòng nhập Port"))
+        return
     for i in range(request_count):
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -42,19 +56,28 @@ def ping(ip, port, request_count=5):
                 'message':f"ping | ICMP_order: {i + 1}"
             }
             print(f"Sending request {i + 1} to {ip}:{port}")
+            entry.insert('end', f"[PING] => Sending request {i + 1} to {ip}:{port} \n")
+            entry.see("end")
             client_socket.sendall(json.dumps(message).encode())
             client_socket.settimeout(2)
             tmp = client_socket.recv(4096).decode()
             response = json.loads(tmp)
             mess = response['message']
             print(f"Received response {i + 1}: {mess} from {ip}:{port}")
+            entry.insert('end', f"[PING] => Received response {i + 1}: {mess} from {ip}:{port} \n")
+            entry.see("end")
         except socket.timeout:
             print("Request timed out.")
+            entry.insert('end', f"[PING] => Request timed out. \n")
+            entry.see("end")
         except Exception as error:
             print(f"[ERROR] Failed to send request {i + 1} to {ip}:{port}: {error}")
+            entry.insert('end', f"[PING] => Failed to send request {i + 1} to {ip}:{port}: {error} \n")
+            entry.see("end")
         finally:
             client_socket.close()  
         time.sleep(1) 
+    window.after(0, lambda: messagebox.showinfo("Hoàn tất", "Đã kết thúc ping!"))
 
 def response_publish(conn):
     conn.sendall(json.dumps({"status": True}).encode())
@@ -158,12 +181,21 @@ def client_handler(conn, addr):
                     living_conn.remove(conn)
                     print(f"[LOGOUT] {addr} has logged out.")
                     print("[CONNECTION] Living connection: ", len(living_conn))
+                    if S_LIVING:
+                        S_LIVING.delete(0, 'end')
+                        S_LIVING.insert(0, str(len(living_conn)))
+                    if S_TERMINAL:
+                        S_TERMINAL.insert('end', f"[LOGOUT] {addr} has logged out. \n")
+                        S_TERMINAL.see("end")
                 conn.close()
                 break
             
             case "ping":
                 mes = request['message']
                 print(f"[INFO] Received ping request from {addr[0]}")
+                if S_TERMINAL:
+                    S_TERMINAL.insert('end', f"[INFO] Received ping request from {addr[0]} \n")
+                    S_TERMINAL.see("end")
                 icmp_order = mes.split(":")[-1].strip()
                 response_message = {
                     'option': 'pong',
@@ -184,7 +216,7 @@ def login(conn, email, password):
                 return False
             else :
                 cursor.execute("SELECT email FROM login WHERE email = %s AND password = %s;", (email, password))
-                successfull = cursor.fetchall()
+                successfull = cursor.fetchall() 
                 print(successfull)
                 if successfull:
                     peer_info = {'status': True, 'hostname': email}
@@ -193,13 +225,18 @@ def login(conn, email, password):
                         living_conn.append(conn)
                     # print(conn)
                     print("[CONNECTION] Living connection: ", len(living_conn))
+                    if S_LIVING:
+                        S_LIVING.delete(0, 'end')
+                        S_LIVING.insert(0, str(len(living_conn)))
                     IP, port = conn.getpeername()
                     hostname = peer_info['hostname'][0]
                     # Assuming conn is your socket object
 
                     print("Client IP:", IP)
                     print("Client Port:", port)
-
+                    if S_TERMINAL:
+                        S_TERMINAL.insert('end', f"[LOGIN] New login {IP}:{port} \n")
+                        S_TERMINAL.see("end")
                     cursor.execute("""
                         UPDATE peers
                         SET IP = %s, port = %s
@@ -287,30 +324,33 @@ def signup(conn,  email, password):
             connection_to_db.commit()
             conn.sendall(json.dumps({'status': True, 'mes': 'Sign up successful'}).encode())
             print(f"[SIGNUP] New user created: {email}")
+            if S_TERMINAL:
+                S_TERMINAL.insert('end', f"[SIGNUP] New user created: {email} \n")
+                S_TERMINAL.see("end")
     except Exception as error:
         print("[ERROR] Function signup error:", error)
         # conn.sendall(json.dumps({'status': False, 'mes': 'Signup failed'}).encode())
     finally:
         print("[TEST] Function signup run ok")
 
-def terminal():
-    option = input()
-    while option != "exit":
-        if option == "ping":
-            user_input = input("Enter command in format 'ping <ip> <port>': ")
-            parts = user_input.split()
-            if len(parts) == 3 and parts[0].lower() == "ping":
-                try:
-                    ip, port = parts[1], int(parts[2])  
-                    ping(ip, port)  
-                except ValueError:
-                    print("Invalid port. Please enter a valid integer for port.")
-            else:
-                print("Invalid input. Please enter in format 'ping <ip> <port>'.")
-        elif option == "view_peers":
-            view_peers()
-        option = input()
-    os._exit(0)
+# def terminal():
+#     option = input()
+#     while option != "exit":
+#         if option == "ping":
+#             user_input = input("Enter command in format 'ping <ip> <port>': ")
+#             parts = user_input.split()
+#             if len(parts) == 3 and parts[0].lower() == "ping":
+#                 try:
+#                     ip, port = parts[1], int(parts[2])  
+#                     ping(ip, port)  
+#                 except ValueError:
+#                     print("Invalid port. Please enter a valid integer for port.")
+#             else:
+#                 print("Invalid input. Please enter in format 'ping <ip> <port>'.")
+#         elif option == "view_peers":
+#             view_peers()
+#         option = input()
+#     os._exit(0)
 
 def server_main():
     # global public_key, private_key
@@ -344,10 +384,47 @@ def server_main():
         server_socket.close()
         cursor.close()
 
+def openListPeer(window):
+    res = view_peers()
+    if not res:
+        window.after(0, lambda: messagebox.showinfo("Lỗi", "Không lấy được danh sách peer!"))
+        return
+    GUILISTADMIN(res, "DANH SÁCH CÁC PEER")
+
+def saveterminal(entry):
+    global S_TERMINAL
+    S_TERMINAL = entry
+    print("Luu terminal thành công")
+    print(S_TERMINAL)
+
+def saveliving(entry):
+    global S_LIVING
+    S_LIVING = entry
+
+
 if __name__ == "__main__":
     server_thread = threading.Thread(target=server_main)
-    terminal_thread = threading.Thread(target=terminal)
-    terminal_thread.start()
     server_thread.start()
-    terminal_thread.join()
+
+    GUITRACKER(TRACKER_ADDRESS, TRACKER_PORT, ping, openListPeer, saveterminal, saveliving)
+
+
+    # option = input()
+    # while option != "exit":
+    #     if option == "ping":
+    #         user_input = input("Enter command in format 'ping <ip> <port>': ")
+    #         parts = user_input.split()
+    #         if len(parts) == 3 and parts[0].lower() == "ping":
+    #             try:
+    #                 ip, port = parts[1], int(parts[2])  
+    #                 ping(ip, port)  
+    #             except ValueError:
+    #                 print("Invalid port. Please enter a valid integer for port.")
+    #         else:
+    #             print("Invalid input. Please enter in format 'ping <ip> <port>'.")
+    #     elif option == "view_peers":
+    #         view_peers()
+    #     option = input()
+    
+    os._exit(0)
     server_thread.join()
