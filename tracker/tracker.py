@@ -110,7 +110,7 @@ def client_handler(conn, addr):
             case "login":
                 email = request['email']
                 password = request['password']
-                login(conn, email, password)
+                login(conn, email, password, port)
 
             case "signup":
                 email = request['email']
@@ -213,7 +213,7 @@ def client_handler(conn, addr):
                 conn.close()
                 break
 
-def login(conn, email, password):
+def login(conn, email, password, client_port):
     try:
         while True:
             if not email:
@@ -251,7 +251,7 @@ def login(conn, email, password):
                         UPDATE peers
                         SET IP = %s, port = %s
                         WHERE hostname = %s;
-                    """, (IP, port, hostname))
+                    """, (IP, client_port, hostname))
                     connection_to_db.commit()
                     return True
                 else :

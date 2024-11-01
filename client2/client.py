@@ -700,11 +700,12 @@ def login(conn, email, password, window):
         window.after(0, lambda: messagebox.showinfo("Lỗi", "Không kết nối được với tracker!"))
         return
     try: 
-        global HOSTNAME, S_EMAIL
+        global HOSTNAME, S_EMAIL, LOCAL_SERVER_PORT
         data = {
             'option': 'login',
             'email': email, 
-            'password': password
+            'password': password,
+            'port': LOCAL_SERVER_PORT
         }
         response = send_with_retry(conn, data)
         status = response['status']
