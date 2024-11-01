@@ -449,21 +449,30 @@ def merge_files(file_name, pieces, file_size, entry):
         entry.insert('end', f"[{gettime()}] => File {file_name} không đủ mảnh để gộp. \n")
         entry.see("end")
         return
+
+    pieces.sort(key=lambda x: int(x.split('_')[-1][5:]))
+
     total_size = 0
     for piece in pieces:
         total_size += os.path.getsize(piece)
+
     if total_size != file_size:
         entry.insert('end', f"[{gettime()}] => Gộp file {file_name} lỗi: Tổng kích thước không khớp với kích thước tệp gốc\n")
         entry.see("end")
         return
+
     with open(file_name, "wb") as file:
         for piece in pieces:
             with open(piece, "rb") as piece_file:
                 file.write(piece_file.read())
+                entry.insert('end', f"[{gettime()}] => Đã gộp mảnh: {piece}\n")
+                entry.see("end")
             os.remove(piece)
+
     entry.insert('end', f"[{gettime()}] => Thành công gộp {len(pieces)} mảnh thành tệp {file_name} \n")
     entry.see("end")
     return True
+
 
 def view_peers(tracker_conn):
     try:
