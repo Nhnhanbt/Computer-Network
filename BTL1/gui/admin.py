@@ -215,6 +215,7 @@ def GUITRACKER(TRACKER_ADDRESS, TRACKER_PORT, ping, openListPeer, saveterminal, 
         insertontime=500,
         font=("Inter", 16)
     )
+    entry_4.insert(0, '0')
     entry_4.place(
         x=319.0,
         y=336.0,

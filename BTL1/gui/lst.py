@@ -11,7 +11,7 @@ def GUILIST(response, titlename):
         return ASSETS_PATH / Path(path)
 
     window = Tk()
-
+    window.title("DANH SÁCH CÁC PEER - BK FILE SHARING")
     window.geometry("1200x700")
     window.configure(bg="#FFFFFF")
 

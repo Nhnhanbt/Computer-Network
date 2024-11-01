@@ -452,10 +452,10 @@ def GUIHOME(tracker_conn, S_EMAIL, HOSTNAME, LOCAL_SERVER_ADDRESS, LOCAL_SERVER_
     )
 
     canvas.create_text(
-        722.0,
+        641.0,
         352.0,
         anchor="nw",
-        text="IP:",
+        text="Ping IP:",
         fill="#6F6F6F",
         font=("Inter Light", 16 * -1)
     )

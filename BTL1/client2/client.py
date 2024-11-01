@@ -7,7 +7,7 @@ import os, sys
 import hashlib
 import base64
 import time
-
+from concurrent.futures import ThreadPoolExecutor
 from tkinter import Tk, messagebox
 sys.path.append(os.path.abspath("../gui"))
 from login import GUILOGIN
@@ -25,7 +25,7 @@ S_FILE_NAME = ''
 S_FILE_SIZE = None
 READY_PUBLISH = False
 S_LEN_PIECE = 0
-
+server_socket = None
 S_TERMINAL = None
 # END
 
@@ -50,7 +50,9 @@ def send_with_retry(tracker_conn, data, timeout = 2, max_retries = 3):
             # print(data)
             tracker_conn.sendall(json.dumps(data).encode() + b'\n')
             tracker_conn.settimeout(timeout)
-            response = tracker_conn.recv(4096).decode()
+            response = tracker_conn.recv(16384).decode()
+            print(response)
+
             response = json.loads(response)
             # print(response)
             tracker_conn.settimeout(None)  # Reset timeout
@@ -470,8 +472,11 @@ def download(tracker_conn, file_name, entry, window):
             "piece_order": piece_order,
             "hostname": HOSTNAME
         }
+        print(data)
         metainfo = send_with_retry(tracker_conn, data)
+        print("Received metainfo:", metainfo)
         peers = metainfo['metainfo']
+        print("ok")
 
         if metainfo is not None:
             entry.insert('end', f"[DOWNLOAD] => Successfully received metainfo \n")
@@ -549,6 +554,8 @@ def send_file(conn, addr, peer_data):
         print(f"[CONNECTION] Closed connection with {addr}")
 
 def server_main():
+    global server_socket
+
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # IPv4 and TCP/IP
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # Config: can reuse IP immediately after closed
     server_socket.bind((LOCAL_SERVER_ADDRESS, LOCAL_SERVER_PORT))
@@ -625,6 +632,12 @@ def login(conn, email, password, window):
     
 def signup(conn, email, password, window):
     global status_loop
+    if email=='' or password == '':
+        window.after(0, lambda: messagebox.showinfo("Lỗi", "Vui lòng nhập đầy đủ thông tin!"))
+        return
+    if conn==None:
+        window.after(0, lambda: messagebox.showinfo("Lỗi", "Không kết nối được với tracker!"))
+        return
     try:
         signup_data = {
             'option': 'signup',
@@ -714,6 +727,7 @@ def logout(window=None):
             tracker_conn.sendall(json.dumps({'option': 'logout_confirm'}).encode())
             print("[LOGOUT] Successfully logged out.")
             online = False
+            print("[LOGOUT] Set logout to false")
             HOSTNAME = ''
             if window:
                 status_loop = True
@@ -763,8 +777,9 @@ if __name__ == "__main__":
             continue
 
         if HOSTNAME != '':
-            server_thread = threading.Thread(target=server_main)
-            server_thread.start()
+            if server_socket is None:
+                server_thread = threading.Thread(target=server_main)
+                server_thread.start()
             online = True
             GUIHOME(tracker_conn, S_EMAIL, HOSTNAME, LOCAL_SERVER_ADDRESS, LOCAL_SERVER_PORT, logout, publish, publish_piece, ping, download, openListPeer, saveterminal)
 
