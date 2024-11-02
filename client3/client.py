@@ -852,9 +852,9 @@ def goLogin(window):
 
 def openListPeer(tracker_conn, window):
     res = view_peers(tracker_conn)
-    if not res:
-        window.after(0, lambda: messagebox.showinfo("Lỗi", "Không lấy được danh sách peer!"))
-        return
+    # if not res:
+    #     window.after(0, lambda: messagebox.showinfo("Lỗi", "Không lấy được danh sách peer!"))
+    #     return
     GUILIST(res, "DANH SÁCH CÁC PEER")
 
 def saveterminal(entry):

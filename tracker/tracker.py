@@ -403,9 +403,9 @@ def server_main():
 
 def openListPeer(window):
     res = view_peers()
-    if not res:
-        window.after(0, lambda: messagebox.showinfo("Lỗi", "Không lấy được danh sách peer!"))
-        return
+    # if not res:
+    #     window.after(0, lambda: messagebox.showinfo("Lỗi", "Không lấy được danh sách peer!"))
+    #     return
     GUILISTADMIN(res, "DANH SÁCH CÁC PEER")
 
 def saveterminal(entry):
