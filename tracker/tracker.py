@@ -15,7 +15,7 @@ S_TERMINAL = None
 S_LIVING = None
 
 TRACKER_PORT = 50000
-TRACKER_ADDRESS = "192.168.1.41" 
+TRACKER_ADDRESS = "127.0.0.1" 
 
 connection_to_db = mysql.connect(host="localhost", user="root", password="", database="computer_network")
 cursor=connection_to_db.cursor()
