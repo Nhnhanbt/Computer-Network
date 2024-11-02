@@ -29,10 +29,10 @@ S_TERMINAL = None
 conn_lock = threading.Lock()
 
 TRACKER_PORT = 50000
-TRACKER_ADDRESS = "127.0.0.1"
+TRACKER_ADDRESS = "192.168.1.41"
 # PROXY_PORT =
 # PROXY_ADDRESS = 
-LOCAL_SERVER_ADDRESS = "127.0.0.1"
+LOCAL_SERVER_ADDRESS = "192.168.1.41"
 LOCAL_SERVER_PORT = 61001
 HOSTNAME = ""
 
@@ -852,9 +852,9 @@ def goLogin(window):
 
 def openListPeer(tracker_conn, window):
     res = view_peers(tracker_conn)
-    if not res:
-        window.after(0, lambda: messagebox.showinfo("Lỗi", "Không lấy được danh sách peer!"))
-        return
+    # if not res:
+    #     window.after(0, lambda: messagebox.showinfo("Lỗi", "Không lấy được danh sách peer!"))
+    #     return
     GUILIST(res, "DANH SÁCH CÁC PEER")
 
 def saveterminal(entry):
