@@ -7,7 +7,7 @@
 | 1   | 2213001 | Trần Thành Tài      | tai.tranthanh@hcmut.edu.vn     |
 | 2   | 2213298 | Nguyễn Trường Thịnh | thinh.nguyen04@hcmut.edu.vn    |
 | 3   | 2212362 | Nguyễn Hữu Nhân     | nhan.nguyenhuucse@hcmut.edu.vn |
-| 4   | 2210762 | Dương Thuận Đông    |                                |
+| 4   | 2210762 | Dương Thuận Đông    | dong.duong3949@hcmut.edu.vn    |
 
 ## Hướng dẫn cài đặt
 
