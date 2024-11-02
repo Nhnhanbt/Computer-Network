@@ -326,7 +326,10 @@ def publish(tracker_conn, path, entry , window):
                 pass
             hashes.append(create_pieces_string(piece))
             piece_size.append(os.path.getsize(piece))
-        window.after(0, lambda: messagebox.showinfo("Thành công", f"Tách tệp thành {len(pieces)} thành công!"))
+        if len(pieces)==0:
+            window.after(0, lambda: messagebox.showinfo("Lỗi", f"Tách tệp không thành công!"))
+            return
+        window.after(0, lambda: messagebox.showinfo("Thành công", f"Tách tệp thành {len(pieces)} mảnh thành công!"))
         S_HASHES = hashes
         S_PIECE_SIZE = piece_size
         S_FILE_NAME = file_name
