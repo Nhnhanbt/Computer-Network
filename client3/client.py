@@ -26,6 +26,9 @@ READY_PUBLISH = False
 S_LEN_PIECE = 0
 server_socket = None
 S_TERMINAL = None
+DOWN_STATUS = []
+DOWN_SUCCESS = 0
+DOWN_ERROR = 0
 conn_lock = threading.Lock()
 
 TRACKER_PORT = 50000
@@ -447,8 +450,11 @@ def ping_handler(conn, addr, data):
         conn.close()
 
 def merge_files(file_name, pieces, file_size, entry):
+    global DOWN_ERROR, DOWN_STATUS, DOWN_SUCCESS
     all_exist = all(os.path.exists(piece) for piece in pieces)
     if not all_exist:
+        DOWN_STATUS.append({"name": file_name, "mess": "Không đủ mảnh để gộp"})
+        DOWN_ERROR += 1
         entry.insert('end', f"[{gettime()}] => File {file_name} không đủ mảnh để gộp. \n")
         entry.see("end")
         return
@@ -462,6 +468,8 @@ def merge_files(file_name, pieces, file_size, entry):
     if total_size != file_size:
         entry.insert('end', f"[{gettime()}] => Gộp file {file_name} lỗi: Tổng kích thước không khớp với kích thước tệp gốc\n")
         entry.see("end")
+        DOWN_STATUS.append({"name": file_name, "mess": "Tổng kích thước không khớp với kích thước tệp gốc để gộp"})
+        DOWN_ERROR += 1
         return
 
     with open(file_name, "wb") as file:
@@ -474,6 +482,8 @@ def merge_files(file_name, pieces, file_size, entry):
 
     entry.insert('end', f"[{gettime()}] => Thành công gộp {len(pieces)} mảnh thành tệp {file_name} \n")
     entry.see("end")
+    DOWN_STATUS.append({"name": file_name, "mess": "Gộp thành công thành tệp"})
+    DOWN_SUCCESS += 1
     return True
 
 
@@ -522,7 +532,7 @@ def local_piece_order(file_name):
     return list(present_orders)
 
 def download(tracker_conn, file_name, entry, window):
-    global HOSTNAME
+    global HOSTNAME, DOWN_STATUS, DOWN_SUCCESS, DOWN_ERROR
     try:
         if file_name == '':
             return
@@ -547,18 +557,17 @@ def download(tracker_conn, file_name, entry, window):
         print(data)
         metainfo = send_with_retry_download(tracker_conn, data)
         print("Received metainfo:", metainfo)
-        peers = metainfo['metainfo']
-        print("ok")
 
-        if metainfo is not None:
-            entry.insert('end', f"[{gettime()}] => Nhận dữ liệu thành công\n")
-            entry.see("end")
-            print("[DOWNLOAD] Successfully received metainfo")
-        else:
-            entry.insert('end', f"[{gettime()}] => Nhận dữ liệu thất bại\n")
+        if metainfo == None:
+            entry.insert('end', f"[{gettime()}] => Không tìm thấy tệp {file_name}\n")
             entry.see("end")
             print("[DOWNLOAD] Failed to receive metainfo after retries.")
+            DOWN_STATUS.append({"name": file_name, "mess": "Không tìm thấy tệp"})
+            DOWN_ERROR += 1
             return 
+        
+        peers = metainfo['metainfo']
+        print("ok")
         
         sorted = add_priority(peers)
         send_requests(sorted)
@@ -590,6 +599,10 @@ def download(tracker_conn, file_name, entry, window):
         entry.see("end")
 
 def down_thread(tracker_conn, filename, entry, window):
+    global DOWN_STATUS, DOWN_ERROR, DOWN_SUCCESS
+    DOWN_STATUS = []
+    DOWN_ERROR = 0
+    DOWN_SUCCESS = 0
     if filename == '':
         window.after(0, lambda: messagebox.showinfo("Lỗi", "Vui lòng nhập tên file!"))
         return
@@ -602,6 +615,8 @@ def down_thread(tracker_conn, filename, entry, window):
         if check_local_files(name):
             entry.insert('end', f"[{gettime()}] => Tệp {name} đã tồn tại trong thư mục \n")
             entry.see("end")
+            DOWN_STATUS.append({"name": name, "mess": "Đã tồn tại trong thư mục"})
+            DOWN_ERROR += 1
             continue
         entry.insert('end', f"[{gettime()}] => Bắt đầu tải tệp {name} \n")
         entry.see("end")
@@ -610,14 +625,20 @@ def down_thread(tracker_conn, filename, entry, window):
         tmp.start()
     for tmp in tmp0:
         tmp.join()
+
+    for item in DOWN_STATUS:
+        entry.insert('end', f"[{gettime()}] => Kết quả tải {item['name']}: {item['mess']} \n")
+        entry.see("end")
+    
+    window.after(0, lambda: messagebox.showinfo("Hoàn tất", f"Đã xong tải tệp. Thành công {DOWN_SUCCESS}, thất bại {DOWN_ERROR}"))
  
 
 def send_file(conn, addr, peer_data):
-    try:
-        S_TERMINAL.insert('end', f"[{gettime()}] => Chấp nhận kết nối từ {addr} \n")
-        S_TERMINAL.see("end")
-    except:
-        pass
+    # try:
+    #     S_TERMINAL.insert('end', f"[{gettime()}] => Chấp nhận kết nối từ {addr} \n")
+    #     S_TERMINAL.see("end")
+    # except:
+    #     pass
     try:
         # Receive the request from the peer
         # peer_data = conn.recv(4096).decode('utf-8').strip()
@@ -632,20 +653,20 @@ def send_file(conn, addr, peer_data):
                     if not bytes_read:
                         break  # Exit loop if end of file reached
                     conn.sendall(bytes_read)  # Send the chunk to the client
-            try:
-                S_TERMINAL.insert('end', f"[{gettime()}] => Gửi mảnh {peer_data['piece_order']} đến {addr}  \n")
-                S_TERMINAL.see("end")
-            except:
-                pass
+            # try:
+            #     S_TERMINAL.insert('end', f"[{gettime()}] => Gửi mảnh {peer_data['piece_order']} đến {addr}  \n")
+            #     S_TERMINAL.see("end")
+            # except:
+            #     pass
         else:
             # If file piece does not exist, send an error message
             error_msg = json.dumps({"error": "Requested file piece not found"}).encode('utf-8')
             conn.sendall(error_msg)
-            try:
-                S_TERMINAL.insert('end', f"[{gettime()}] => Mảnh {piece_name} không tìm thấy cho {addr}  \n")
-                S_TERMINAL.see("end")
-            except:
-                pass
+            # try:
+            #     S_TERMINAL.insert('end', f"[{gettime()}] => Mảnh {piece_name} không tìm thấy cho {addr}  \n")
+            #     S_TERMINAL.see("end")
+            # except:
+            #     pass
 
     except Exception as error:
         print(f"[ERROR] Function send_file: {error}")
@@ -855,9 +876,6 @@ def goLogin(window):
 
 def openListPeer(tracker_conn, window):
     res = view_peers(tracker_conn)
-    # if not res:
-    #     window.after(0, lambda: messagebox.showinfo("Lỗi", "Không lấy được danh sách peer!"))
-    #     return
     GUILIST(res, "DANH SÁCH CÁC PEER")
 
 def saveterminal(entry):
@@ -892,4 +910,3 @@ if __name__ == "__main__":
         os._exit(0)
     except:
         pass
-
